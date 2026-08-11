@@ -1,1 +1,39 @@
-<!doctype html><html><body><h1>HolidayApp</h1><p>Placeholder deployment test.</p></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#173b2c">
+<title>Ireland Holiday Guide</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+ integrity="sha256-p4NxAoJBhIINfQ3yn9E4Aq0moMZsRGgW2pK0xjre0dA=" crossorigin="">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><div class="wrap"><h1>Ireland Holiday Guide</h1><p>Hotels, attractions, lunch and dinner — list + OpenStreetMap.</p></div></header>
+<div class="toolbar-wrap"><div class="toolbar">
+  <div class="controls">
+    <input id="search" type="search" placeholder="Search name or description…" autocomplete="off">
+    <select id="area"><option value="All">All locations</option><option>Dublin</option><option>Galway</option><option>Roscommon / Athlone</option><option>Limerick / Clare</option><option>Killarney / Kerry</option></select>
+  </div>
+  <div class="type-row" id="types">
+    <button class="pill active" data-type="All">All</button><button class="pill" data-type="Attraction">Attractions</button>
+    <button class="pill" data-type="Hotel">Hotels</button><button class="pill" data-type="Lunch">Lunch</button><button class="pill" data-type="Dinner">Dinner</button>
+  </div>
+  <div class="view-row"><button id="listBtn" class="view-btn active">List</button><button id="mapBtn" class="view-btn">Map</button></div>
+  <div class="utility"><span id="gpsStatus">Tap “Use my location” for distances and your position.</span><button id="gpsBtn" class="small-btn">Use my location</button></div>
+</div></div>
+<main>
+  <div class="summary"><strong id="count"></strong><button id="clearBtn" class="small-btn">Clear filters</button></div>
+  <div class="legend"><span class="a">Attraction</span><span class="h">Hotel</span><span class="l">Lunch</span><span class="d">Dinner</span></div>
+  <section id="listView"><div id="cards" class="cards"></div></section>
+  <section id="mapView"><div id="mapStatus" class="map-status">Open the map to load marker locations.</div><div id="map"></div>
+  <p class="map-note">Map data © OpenStreetMap contributors. Coordinates are resolved with OpenStreetMap Nominatim and cached on your device. Directions open in Google Maps.</p></section>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+ integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>window.HOLIDAY_ITEMS=[];</script>
+<script src="data-1.js"></script><script src="data-2.js"></script><script src="data-3.js"></script>
+<script src="data-4.js"></script><script src="data-5.js"></script><script src="data-6.js"></script>
+<script src="app.js"></script>
+</body></html>
