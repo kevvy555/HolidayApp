@@ -6,28 +6,40 @@
 <meta name="theme-color" content="#173b2c">
 <title>Ireland Holiday Guide</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
- integrity="sha256-p4NxAoJBhIINfQ3yn9E4Aq0moMZsRGgW2pK0xjre0dA=" crossorigin="">
-<link rel="stylesheet" href="style.css?v=2">
-<link rel="stylesheet" href="itinerary.css?v=1">
+ integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="itinerary.css?v=2">
 </head>
 <body>
-<header><div class="wrap"><h1>Ireland Holiday Guide</h1><p>Hotels, attractions, lunch and dinner — list + OpenStreetMap + itinerary.</p></div></header>
+<header><div class="wrap"><h1>Ireland Holiday Guide</h1><p>Hotels, attractions, lunch and dinner — list + map + itinerary.</p></div></header>
+
 <div class="toolbar-wrap"><div class="toolbar">
   <div class="controls">
     <input id="search" type="search" placeholder="Search name or description…" autocomplete="off">
-    <select id="area"><option value="All">All locations</option><option>Dublin</option><option>Galway</option><option>Roscommon / Athlone</option><option>Limerick / Clare</option><option>Killarney / Kerry</option></select>
+    <select id="area">
+      <option value="All">All locations</option>
+      <option>Dublin</option><option>Galway</option><option>Roscommon / Athlone</option>
+      <option>Limerick / Clare</option><option>Killarney / Kerry</option>
+    </select>
   </div>
   <div class="type-row" id="types">
-    <button class="pill active" data-type="All">All</button><button class="pill" data-type="Attraction">Attractions</button>
-    <button class="pill" data-type="Hotel">Hotels</button><button class="pill" data-type="Lunch">Lunch</button><button class="pill" data-type="Dinner">Dinner</button>
+    <button class="pill active" data-type="All">All</button>
+    <button class="pill" data-type="Attraction">Attractions</button>
+    <button class="pill" data-type="Hotel">Hotels</button>
+    <button class="pill" data-type="Lunch">Lunch</button>
+    <button class="pill" data-type="Dinner">Dinner</button>
   </div>
   <div class="view-row">
     <button id="listBtn" class="view-btn active">List</button>
     <button id="mapBtn" class="view-btn">Map</button>
     <button id="itineraryBtn" class="view-btn">Itinerary</button>
   </div>
-  <div class="utility"><span id="gpsStatus">Tap “Use my location” for distances and your position.</span><button id="gpsBtn" class="small-btn">Use my location</button></div>
+  <div class="utility">
+    <span id="gpsStatus">Tap “Use my location” for distances and your position.</span>
+    <button id="gpsBtn" class="small-btn">Use my location</button>
+  </div>
 </div></div>
+
 <main>
   <div id="browseSummary">
     <div class="summary"><strong id="count"></strong><button id="clearBtn" class="small-btn">Clear filters</button></div>
@@ -39,26 +51,30 @@
   <section id="mapView">
     <div id="mapStatus" class="map-status">Open the map to load marker locations.</div>
     <div id="map"></div>
-    <p class="map-note">Map data © OpenStreetMap contributors. Coordinates are resolved with OpenStreetMap Nominatim and cached on your device. Directions open in Google Maps.</p>
+    <p class="map-note">Map data © OpenStreetMap contributors. Place coordinates are cached on this device. Directions open in Google Maps.</p>
   </section>
 
   <section id="itineraryView">
     <div class="itinerary-top">
       <div class="itinerary-filters">
-        <label>Day
-          <select id="itineraryDay"></select>
-        </label>
+        <label>Day<select id="itineraryDay"></select></label>
         <label>Location
           <select id="itineraryArea">
             <option value="All">All locations</option>
-            <option>Dublin</option>
-            <option>Galway</option>
-            <option>Roscommon / Athlone</option>
-            <option>Limerick / Clare</option>
-            <option>Killarney / Kerry</option>
+            <option>Dublin</option><option>Galway</option><option>Roscommon / Athlone</option>
+            <option>Limerick / Clare</option><option>Killarney / Kerry</option>
           </select>
         </label>
       </div>
+
+      <div class="section-filter-row" id="sectionFilters" aria-label="Show itinerary sections">
+        <button class="section-filter anytime active" data-section-filter="Anytime" type="button">Anytime</button>
+        <button class="section-filter morning active" data-section-filter="Morning" type="button">Morning</button>
+        <button class="section-filter lunch active" data-section-filter="Lunch" type="button">Lunch</button>
+        <button class="section-filter afternoon active" data-section-filter="Afternoon" type="button">Afternoon</button>
+        <button class="section-filter evening active" data-section-filter="Evening" type="button">Evening</button>
+      </div>
+
       <div class="itinerary-tools">
         <span id="itinerarySaveStatus">Saved on this device</span>
         <button id="exportItineraryBtn" class="small-btn" type="button">Export</button>
@@ -70,24 +86,24 @@
     <div id="itineraryEmpty" class="itinerary-empty">Nothing planned for this day yet. Use <strong>Add</strong> on any List card.</div>
 
     <div id="itinerarySections" class="itinerary-sections">
-      <section class="day-section anytime">
-        <h2>Anytime <span class="section-hint">Unallocated attractions</span></h2>
+      <section class="day-section" data-day-section="Anytime">
+        <div class="section-divider"><span class="section-badge anytime">Anytime</span></div>
         <div class="itinerary-list" data-section="Anytime"></div>
       </section>
-      <section class="day-section morning">
-        <h2>Morning</h2>
+      <section class="day-section" data-day-section="Morning">
+        <div class="section-divider"><span class="section-badge morning">Morning</span></div>
         <div class="itinerary-list" data-section="Morning"></div>
       </section>
-      <section class="day-section lunch">
-        <h2>Lunch</h2>
+      <section class="day-section" data-day-section="Lunch">
+        <div class="section-divider"><span class="section-badge lunch">Lunch</span></div>
         <div class="itinerary-list" data-section="Lunch"></div>
       </section>
-      <section class="day-section afternoon">
-        <h2>Afternoon</h2>
+      <section class="day-section" data-day-section="Afternoon">
+        <div class="section-divider"><span class="section-badge afternoon">Afternoon</span></div>
         <div class="itinerary-list" data-section="Afternoon"></div>
       </section>
-      <section class="day-section evening">
-        <h2>Evening</h2>
+      <section class="day-section" data-day-section="Evening">
+        <div class="section-divider"><span class="section-badge evening">Evening</span></div>
         <div class="itinerary-list" data-section="Evening"></div>
       </section>
     </div>
@@ -97,10 +113,7 @@
 <div id="addModal" class="modal-backdrop" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addModalTitle">
     <div class="modal-head">
-      <div>
-        <div class="modal-kicker">Add to itinerary</div>
-        <h2 id="addModalTitle">Choose a day</h2>
-      </div>
+      <div><div class="modal-kicker">Add to itinerary</div><h2 id="addModalTitle">Choose a day</h2></div>
       <button id="closeAddModal" class="modal-close" type="button" aria-label="Close">×</button>
     </div>
     <p id="addModalItem" class="modal-item"></p>
@@ -108,12 +121,15 @@
   </div>
 </div>
 
+<script>window.L_DISABLE_3D = true;</script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 <script>window.HOLIDAY_ITEMS=[];</script>
 <script src="data-1.js"></script><script src="data-2.js"></script><script src="data-3.js"></script>
 <script src="data-4.js"></script><script src="data-5.js"></script><script src="data-6.js"></script>
-<script src="app.js?v=2"></script>
-<script src="itinerary.js?v=1"></script>
-</body></html>
+<script src="source-data.js?v=1"></script>
+<script src="app.js?v=3"></script>
+<script src="itinerary.js?v=2"></script>
+</body>
+</html>
