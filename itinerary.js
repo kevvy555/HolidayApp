@@ -17,32 +17,48 @@ const visibleSections=new Set(ITINERARY_SECTIONS);
 function uid(){return window.crypto&&crypto.randomUUID?crypto.randomUUID():"it-"+Date.now()+"-"+Math.random().toString(36).slice(2)}
 function loadEntries(){try{const s=JSON.parse(localStorage.getItem(ITINERARY_STORAGE_KEY)||"{}");return Array.isArray(s.entries)?s.entries:[]}catch{return[]}}
 function saveEntries(){
- localStorage.setItem(ITINERARY_STORAGE_KEY,JSON.stringify({version:1,holiday:"Ireland 2026",entries}));
+ localStorage.setItem(ITINERARY_STORAGE_KEY,JSON.stringify({version:2,holiday:"Ireland 2026",entries}));
  I.saveStatus.textContent="Saved on this device";
  render();renderItinerary();
 }
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
-function findItem(k){return ITEMS.find(i=>itemKey(i)===k)}
+function findItem(k,entry=null){
+ return ITEMS.find(i=>itemKey(i)===k)||(entry&&entry.itemSnapshot?entry.itemSnapshot:null);
+}
+function snapshotFor(item){
+ return{
+  name:item.name,location:item.location,area:item.area||"Other",type:item.type||"Attraction",
+  visitTime:item.visitTime||"",description:item.description||"",website1:item.website1||"",website2:item.website2||"",
+  lat:Number.isFinite(Number(item.lat))?Number(item.lat):undefined,
+  lng:Number.isFinite(Number(item.lng))?Number(item.lng):undefined,
+  source:item.source||"Search"
+ };
+}
 function defaultSection(type){if(type==="Hotel"||type==="Dinner")return"Evening";if(type==="Lunch")return"Lunch";return"Anytime"}
 function setupDays(){I.day.innerHTML=HOLIDAY_DAYS.map(d=>`<option value="${d.date}">${d.label}</option>`).join("");if(!I.day.value)I.day.value=HOLIDAY_DAYS[0].date}
 function openModal(item){
- pendingItem=item;I.modalItem.textContent=`${item.name} · ${item.area} · ${item.type}`;
+ pendingItem=item;I.modalItem.textContent=`${item.name} · ${item.area||"Other"} · ${item.type||"Attraction"}`;
  I.dayButtons.innerHTML=HOLIDAY_DAYS.map(d=>{const already=entries.some(e=>e.date===d.date&&e.itemKey===itemKey(item));return`<button type="button" class="day-choice${already?" added":""}" data-itinerary-date="${d.date}" ${already?"disabled":""}>${d.day}<small>${d.label.replace(d.day+" ","")}${already?" · Added":""}</small></button>`}).join("");
  I.modal.hidden=false;document.body.classList.add("modal-open");
 }
 function closeModal(){I.modal.hidden=true;document.body.classList.remove("modal-open");pendingItem=null}
 function addPending(date){
- if(!pendingItem)return;const k=itemKey(pendingItem);if(entries.some(e=>e.date===date&&e.itemKey===k)){closeModal();return}
+ if(!pendingItem)return;
+ const k=itemKey(pendingItem);
+ if(entries.some(e=>e.date===date&&e.itemKey===k)){closeModal();return}
  const section=defaultSection(pendingItem.type),peers=entries.filter(e=>e.date===date&&e.section===section);
- entries.push({id:uid(),itemKey:k,date,section,order:peers.length});
+ const isBuiltIn=ITEMS.some(i=>itemKey(i)===k);
+ const entry={id:uid(),itemKey:k,date,section,order:peers.length};
+ if(!isBuiltIn)entry.itemSnapshot=snapshotFor(pendingItem);
+ entries.push(entry);
  I.day.value=date;closeModal();saveEntries();
 }
 function visibleEntries(){
  const date=I.day.value,area=I.area.value;
- return entries.filter(e=>e.date===date).filter(e=>{const item=findItem(e.itemKey);return item&&(area==="All"||item.area===area)});
+ return entries.filter(e=>e.date===date).filter(e=>{const item=findItem(e.itemKey,e);return item&&(area==="All"||item.area===area)});
 }
 function itemHtml(entry){
- const item=findItem(entry.itemKey);if(!item)return"";
+ const item=findItem(entry.itemKey,entry);if(!item)return"";
  return`<div class="it-item" data-entry-id="${esc(entry.id)}">
   <button class="it-drag" type="button" aria-label="Drag to reorder">☰</button>
   <div class="it-main"><div class="it-name">${esc(item.name)}</div><div class="it-meta">${esc(item.type)} · ${esc(item.area)} · <a target="_blank" rel="noopener" href="${esc(maps(item))}">Map</a></div></div>
@@ -83,7 +99,7 @@ function moveEntry(id,dir){
 }
 function removeEntry(id){entries=entries.filter(e=>e.id!==id);saveEntries()}
 function exportItinerary(){
- const blob=new Blob([JSON.stringify({version:1,holiday:"Ireland 2026",entries},null,2)],{type:"application/json"});
+ const blob=new Blob([JSON.stringify({version:2,holiday:"Ireland 2026",entries},null,2)],{type:"application/json"});
  const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="Ireland_2026_Itinerary.json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 async function importItinerary(file){
@@ -96,7 +112,8 @@ async function importItinerary(file){
 }
 
 document.addEventListener("click",e=>{
- const add=e.target.closest("[data-add-itinerary]");if(add){const item=findItem(add.dataset.addItinerary);if(item)openModal(item);return}
+ const add=e.target.closest("[data-add-itinerary]");
+ if(add){const item=findItem(add.dataset.addItinerary);if(item)openModal(item);return}
  const day=e.target.closest("[data-itinerary-date]");if(day){addPending(day.dataset.itineraryDate);return}
  const del=e.target.closest("[data-it-delete]");if(del){removeEntry(del.dataset.itDelete);return}
  const move=e.target.closest("[data-it-move]");if(move){moveEntry(move.closest(".it-item").dataset.entryId,move.dataset.itMove);return}
@@ -113,5 +130,12 @@ I.day.addEventListener("change",renderItinerary);I.area.addEventListener("change
 I.exportBtn.addEventListener("click",exportItinerary);I.importBtn.addEventListener("click",()=>I.importFile.click());
 I.importFile.addEventListener("change",()=>{const f=I.importFile.files?.[0];if(f)importItinerary(f)});
 document.addEventListener("holidayapp:itinerary-opened",renderItinerary);
+
+window.HolidayItinerary={
+ openItem(item){openModal(item)},
+ entries(){return entries.slice()},
+ render:renderItinerary,
+ addItemToDay(item,date){pendingItem=item;addPending(date)}
+};
 
 setupDays();renderItinerary();
