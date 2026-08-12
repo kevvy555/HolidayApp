@@ -4,7 +4,8 @@ const ITINERARY_STORAGE_KEY="holidayapp_itinerary_v1";
 const COORD_CACHE_KEY="holidayapp_coords_v2";
 const ALL_TYPES=["Attraction","Hotel","Lunch","Dinner"];
 const ALL_AREAS=["Dublin","Galway","Roscommon / Athlone","Limerick / Clare","Killarney / Kerry"];
-const state={types:new Set(ALL_TYPES),areas:new Set(ALL_AREAS),search:"",view:"list",gps:null};
+const ALL_SOURCES=["Your list","Suggested"];
+const state={types:new Set(ALL_TYPES),areas:new Set(ALL_AREAS),sources:new Set(ALL_SOURCES),search:"",view:"list",gps:null};
 
 function loadCoordCache(){
   try{
@@ -36,21 +37,21 @@ let nominatimQueue=Promise.resolve(),lastNominatimAt=0;
 
 const $=id=>document.getElementById(id);
 const E={
-  search:$("search"),areas:$("areas"),types:$("types"),listBtn:$("listBtn"),itineraryBtn:$("itineraryBtn"),searchBtn:$("searchTabBtn"),
+  search:$("search"),areas:$("areas"),types:$("types"),sources:$("sources"),listBtn:$("listBtn"),itineraryBtn:$("itineraryBtn"),searchBtn:$("searchTabBtn"),
   gpsBtn:$("gpsBtn"),gpsStatus:$("gpsStatus"),clearBtn:$("clearBtn"),count:$("count"),cards:$("cards"),
   listView:$("listView"),itineraryView:$("itineraryView"),searchView:$("searchView"),browseSummary:$("browseSummary")
 };
 
 function esc(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
 function itemKey(i){return i.name+"|"+i.location}
+function sourceLabel(i){return(i.type==="Hotel"||ORIGINAL_NAMES.has(i.name))?"Your list":"Suggested"}
 function filteredItems(){
   const q=state.search.trim().toLowerCase();
-  return ITEMS.filter(i=>state.types.has(i.type)&&state.areas.has(i.area)&&(!q||[i.name,i.location,i.area,i.type,i.description].join(" ").toLowerCase().includes(q)));
+  return ITEMS.filter(i=>state.types.has(i.type)&&state.areas.has(i.area)&&state.sources.has(sourceLabel(i))&&(!q||[i.name,i.location,i.area,i.type,i.description].join(" ").toLowerCase().includes(q)));
 }
 function rows(){return filteredItems()}
 function maps(i){return"https://www.google.com/maps?q="+encodeURIComponent(i.location)}
 function directions(i){return"https://www.google.com/maps/dir/?api=1&destination="+encodeURIComponent(i.location)+"&travelmode=driving"}
-function sourceLabel(i){return(i.type==="Hotel"||ORIGINAL_NAMES.has(i.name))?"Your list":"Suggested"}
 function itineraryEntries(){
   try{const d=JSON.parse(localStorage.getItem(ITINERARY_STORAGE_KEY)||"{}");return Array.isArray(d.entries)?d.entries:[]}catch{return[]}
 }
@@ -155,6 +156,11 @@ function updateFilterButtons(){
       const v=b.dataset.area;b.classList.toggle("active",v==="All"?state.areas.size===ALL_AREAS.length:state.areas.has(v));
     });
   }
+  if(E.sources){
+    E.sources.querySelectorAll("[data-source]").forEach(b=>{
+      const v=b.dataset.source;b.classList.toggle("active",v==="All"?state.sources.size===ALL_SOURCES.length:state.sources.has(v));
+    });
+  }
 }
 function toggleSet(set,value,allValues){
   if(value==="All"){allValues.forEach(x=>set.add(x));}
@@ -162,7 +168,7 @@ function toggleSet(set,value,allValues){
 }
 function filtersChanged(){
   updateFilterButtons();render();
-  document.dispatchEvent(new CustomEvent("holidayapp:filters-changed",{detail:{types:[...state.types],areas:[...state.areas],search:state.search}}));
+  document.dispatchEvent(new CustomEvent("holidayapp:filters-changed",{detail:{types:[...state.types],areas:[...state.areas],sources:[...state.sources],search:state.search}}));
 }
 function showView(view){
   state.view=view;
@@ -189,11 +195,12 @@ function useGps(){
 E.search.addEventListener("input",e=>{state.search=e.target.value;filtersChanged()});
 E.types.addEventListener("click",e=>{const b=e.target.closest("[data-type]");if(!b)return;toggleSet(state.types,b.dataset.type,ALL_TYPES);filtersChanged()});
 E.areas.addEventListener("click",e=>{const b=e.target.closest("[data-area]");if(!b)return;toggleSet(state.areas,b.dataset.area,ALL_AREAS);filtersChanged()});
+E.sources?.addEventListener("click",e=>{const b=e.target.closest("[data-source]");if(!b)return;toggleSet(state.sources,b.dataset.source,ALL_SOURCES);filtersChanged()});
 E.listBtn.addEventListener("click",()=>showView("list"));
 E.searchBtn.addEventListener("click",()=>showView("google"));
 E.itineraryBtn.addEventListener("click",()=>showView("itinerary"));
 E.gpsBtn.addEventListener("click",useGps);
-E.clearBtn.addEventListener("click",()=>{state.types=new Set(ALL_TYPES);state.areas=new Set(ALL_AREAS);state.search="";E.search.value="";filtersChanged()});
+E.clearBtn.addEventListener("click",()=>{state.types=new Set(ALL_TYPES);state.areas=new Set(ALL_AREAS);state.sources=new Set(ALL_SOURCES);state.search="";E.search.value="";filtersChanged()});
 
-window.HolidayApp={showView,itemKey,maps,directions,esc,state,coordCache,indexAllPlacesOnce,mapCacheSummary,filteredItems,allTypes:ALL_TYPES,allAreas:ALL_AREAS};
+window.HolidayApp={showView,itemKey,maps,directions,esc,state,coordCache,indexAllPlacesOnce,mapCacheSummary,filteredItems,sourceLabel,allTypes:ALL_TYPES,allAreas:ALL_AREAS,allSources:ALL_SOURCES};
 updateFilterButtons();render();
