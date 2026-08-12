@@ -188,7 +188,6 @@ function renderResults(){
   GS.results.innerHTML=searchResults.length?searchResults.map((place,idx)=>{
     const item=googlePlaceItem(place,idx),category=place.primaryTypeDisplayName||place.primaryType||"Place",rich=place.__holidayRichLoaded;
     return`<article class="search-result" data-google-result="${idx}">
-      ${rich?photoMarkup(place,false):""}
       <button class="search-result-main" type="button" data-google-detail="${idx}">
         <h3>${esc(item.name)}</h3><p>${esc(item.location)}</p><div class="search-result-category">${esc(category)}</div>${rich?richMeta(place):'<div class="result-hint">Tap for rating, hours, phone and photo</div>'}
       </button>
@@ -330,4 +329,6 @@ document.addEventListener("holidayapp:gps-updated",()=>drawGps());
 document.addEventListener("holidayapp:google-opened",()=>{initGoogleMap().then(()=>setTimeout(()=>{if(googleMap)google.maps.event.trigger(googleMap,"resize")},80))});
 
 renderUsage();renderResults();
-if(storedGoogleKey())initGoogleMap();
+const hasStoredGoogleKey=!!storedGoogleKey();
+GS.keySetup.hidden=hasStoredGoogleKey;GS.controls.hidden=!hasStoredGoogleKey;
+if(!hasStoredGoogleKey)GS.status.textContent="Add your restricted Google Maps browser key once on this device to enable Google Maps and Places.";
