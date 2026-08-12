@@ -2,10 +2,41 @@ const ITEMS=window.HOLIDAY_ITEMS;
 const ORIGINAL_NAMES=new Set(window.HOLIDAY_ORIGINAL_NAMES||[]);
 const ITINERARY_STORAGE_KEY="holidayapp_itinerary_v1";
 const COORD_CACHE_KEY="holidayapp_coords_v2";
+const FILTER_STORAGE_KEY="holidayapp_filters_v1";
 const ALL_TYPES=["Attraction","Hotel","Lunch","Dinner"];
 const ALL_AREAS=["Dublin","Galway","Roscommon / Athlone","Limerick / Clare","Killarney / Kerry"];
 const ALL_SOURCES=["Your list","Suggested"];
-const state={types:new Set(ALL_TYPES),areas:new Set(ALL_AREAS),sources:new Set(ALL_SOURCES),search:"",view:"list",gps:null};
+
+function restoredSet(values,allowed){
+  if(!Array.isArray(values))return new Set(allowed);
+  return new Set(values.filter(v=>allowed.includes(v)));
+}
+function loadPersistentFilters(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(FILTER_STORAGE_KEY)||"null");
+    if(saved&&typeof saved==="object"){
+      return{
+        types:restoredSet(saved.types,ALL_TYPES),
+        areas:restoredSet(saved.areas,ALL_AREAS),
+        sources:restoredSet(saved.sources,ALL_SOURCES)
+      };
+    }
+  }catch{}
+  return{types:new Set(ALL_TYPES),areas:new Set(ALL_AREAS),sources:new Set(ALL_SOURCES)};
+}
+const restoredFilters=loadPersistentFilters();
+const state={types:restoredFilters.types,areas:restoredFilters.areas,sources:restoredFilters.sources,search:"",view:"list",gps:null};
+function savePersistentFilters(){
+  try{
+    localStorage.setItem(FILTER_STORAGE_KEY,JSON.stringify({
+      version:1,
+      types:[...state.types],
+      areas:[...state.areas],
+      sources:[...state.sources],
+      savedAt:new Date().toISOString()
+    }));
+  }catch{}
+}
 
 function loadCoordCache(){
   try{
@@ -167,6 +198,7 @@ function toggleSet(set,value,allValues){
   else if(set.has(value))set.delete(value);else set.add(value);
 }
 function filtersChanged(){
+  savePersistentFilters();
   updateFilterButtons();render();
   document.dispatchEvent(new CustomEvent("holidayapp:filters-changed",{detail:{types:[...state.types],areas:[...state.areas],sources:[...state.sources],search:state.search}}));
 }
@@ -192,7 +224,7 @@ function useGps(){
   },()=>{E.gpsBtn.disabled=false;E.gpsStatus.textContent="Location permission was blocked. Check browser/site Location permissions.";},{enableHighAccuracy:true,timeout:12000,maximumAge:60000});
 }
 
-E.search.addEventListener("input",e=>{state.search=e.target.value;filtersChanged()});
+E.search.addEventListener("input",e=>{state.search=e.target.value;updateFilterButtons();render();document.dispatchEvent(new CustomEvent("holidayapp:filters-changed",{detail:{types:[...state.types],areas:[...state.areas],sources:[...state.sources],search:state.search}}))});
 E.types.addEventListener("click",e=>{const b=e.target.closest("[data-type]");if(!b)return;toggleSet(state.types,b.dataset.type,ALL_TYPES);filtersChanged()});
 E.areas.addEventListener("click",e=>{const b=e.target.closest("[data-area]");if(!b)return;toggleSet(state.areas,b.dataset.area,ALL_AREAS);filtersChanged()});
 E.sources?.addEventListener("click",e=>{const b=e.target.closest("[data-source]");if(!b)return;toggleSet(state.sources,b.dataset.source,ALL_SOURCES);filtersChanged()});
