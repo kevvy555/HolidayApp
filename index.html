@@ -7,11 +7,12 @@
 <title>Ireland Holiday Guide</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 <link rel="stylesheet" href="itinerary.css?v=2">
+<link rel="stylesheet" href="search.css?v=1">
 </head>
 <body>
-<header><div class="wrap"><h1>Ireland Holiday Guide</h1><p>Hotels, attractions, lunch and dinner — list + map + itinerary.</p></div></header>
+<header><div class="wrap"><h1>Ireland Holiday Guide</h1><p>Hotels, attractions, food, map, search and itinerary.</p></div></header>
 
 <div class="toolbar-wrap"><div class="toolbar">
   <div class="controls">
@@ -32,6 +33,7 @@
   <div class="view-row">
     <button id="listBtn" class="view-btn active">List</button>
     <button id="mapBtn" class="view-btn">Map</button>
+    <button id="searchTabBtn" class="view-btn">Search</button>
     <button id="itineraryBtn" class="view-btn">Itinerary</button>
   </div>
   <div class="utility">
@@ -49,9 +51,30 @@
   <section id="listView"><div id="cards" class="cards"></div></section>
 
   <section id="mapView">
-    <div id="mapStatus" class="map-status">Open the map to load marker locations.</div>
+    <div id="mapStatus" class="map-status">Open the map to build the place index once. It will continue loading in the background if you leave the tab.</div>
     <div id="map"></div>
     <p class="map-note">Map data © OpenStreetMap contributors. Place coordinates are cached on this device. Directions open in Google Maps.</p>
+  </section>
+
+  <section id="searchView">
+    <div class="search-panel">
+      <div class="search-controls">
+        <label>Area
+          <select id="placeSearchArea">
+            <option value="All">All Ireland</option>
+            <option>Dublin</option><option>Galway</option><option>Roscommon / Athlone</option>
+            <option>Limerick / Clare</option><option>Killarney / Kerry</option>
+          </select>
+        </label>
+        <div class="search-query-row">
+          <input id="placeSearch" type="search" placeholder="Search places, e.g. vegan restaurant, castle, beach…" autocomplete="off">
+          <button id="placeSearchBtn" class="btn primary" type="button">Search</button>
+        </div>
+        <div id="placeSearchStatus" class="search-status">Search uses OpenStreetMap place data. Results can be added directly to the itinerary.</div>
+      </div>
+      <div id="searchMap"></div>
+      <div id="placeSearchResults" class="search-results"></div>
+    </div>
   </section>
 
   <section id="itineraryView">
@@ -83,29 +106,14 @@
       </div>
     </div>
 
-    <div id="itineraryEmpty" class="itinerary-empty">Nothing planned for this day yet. Use <strong>Add</strong> on any List card.</div>
+    <div id="itineraryEmpty" class="itinerary-empty">Nothing planned for this day yet. Use <strong>Add</strong> on any List or Search result.</div>
 
     <div id="itinerarySections" class="itinerary-sections">
-      <section class="day-section" data-day-section="Anytime">
-        <div class="section-divider"><span class="section-badge anytime">Anytime</span></div>
-        <div class="itinerary-list" data-section="Anytime"></div>
-      </section>
-      <section class="day-section" data-day-section="Morning">
-        <div class="section-divider"><span class="section-badge morning">Morning</span></div>
-        <div class="itinerary-list" data-section="Morning"></div>
-      </section>
-      <section class="day-section" data-day-section="Lunch">
-        <div class="section-divider"><span class="section-badge lunch">Lunch</span></div>
-        <div class="itinerary-list" data-section="Lunch"></div>
-      </section>
-      <section class="day-section" data-day-section="Afternoon">
-        <div class="section-divider"><span class="section-badge afternoon">Afternoon</span></div>
-        <div class="itinerary-list" data-section="Afternoon"></div>
-      </section>
-      <section class="day-section" data-day-section="Evening">
-        <div class="section-divider"><span class="section-badge evening">Evening</span></div>
-        <div class="itinerary-list" data-section="Evening"></div>
-      </section>
+      <section class="day-section" data-day-section="Anytime"><div class="section-divider"><span class="section-badge anytime">Anytime</span></div><div class="itinerary-list" data-section="Anytime"></div></section>
+      <section class="day-section" data-day-section="Morning"><div class="section-divider"><span class="section-badge morning">Morning</span></div><div class="itinerary-list" data-section="Morning"></div></section>
+      <section class="day-section" data-day-section="Lunch"><div class="section-divider"><span class="section-badge lunch">Lunch</span></div><div class="itinerary-list" data-section="Lunch"></div></section>
+      <section class="day-section" data-day-section="Afternoon"><div class="section-divider"><span class="section-badge afternoon">Afternoon</span></div><div class="itinerary-list" data-section="Afternoon"></div></section>
+      <section class="day-section" data-day-section="Evening"><div class="section-divider"><span class="section-badge evening">Evening</span></div><div class="itinerary-list" data-section="Evening"></div></section>
     </div>
   </section>
 </main>
@@ -129,7 +137,8 @@
 <script src="data-1.js"></script><script src="data-2.js"></script><script src="data-3.js"></script>
 <script src="data-4.js"></script><script src="data-5.js"></script><script src="data-6.js"></script>
 <script src="source-data.js?v=1"></script>
-<script src="app.js?v=3"></script>
-<script src="itinerary.js?v=2"></script>
+<script src="app.js?v=4"></script>
+<script src="itinerary.js?v=3"></script>
+<script src="search.js?v=1"></script>
 </body>
 </html>
