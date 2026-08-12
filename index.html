@@ -5,34 +5,43 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#173b2c">
 <title>Ireland Holiday Guide</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
- integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 <link rel="stylesheet" href="itinerary.css?v=2">
-<link rel="stylesheet" href="search.css?v=3">
+<link rel="stylesheet" href="search.css?v=4">
 </head>
 <body>
-<header><div class="wrap"><h1>Ireland Holiday Guide</h1><p>Hotels, attractions, food, maps, Google search and itinerary.</p></div></header>
+<header><div class="wrap"><h1>Ireland Holiday Guide</h1><p>Hotels, attractions, food, Google map search and itinerary.</p></div></header>
 
 <div class="toolbar-wrap"><div class="toolbar">
   <div class="controls">
     <input id="search" type="search" placeholder="Search listed places…" autocomplete="off">
-    <select id="area">
-      <option value="All">All locations</option>
-      <option>Dublin</option><option>Galway</option><option>Roscommon / Athlone</option>
-      <option>Limerick / Clare</option><option>Killarney / Kerry</option>
-    </select>
   </div>
-  <div class="type-row" id="types">
-    <button class="pill active" data-type="All">All</button>
-    <button class="pill" data-type="Attraction">Attractions</button>
-    <button class="pill" data-type="Hotel">Hotels</button>
-    <button class="pill" data-type="Lunch">Lunch</button>
-    <button class="pill" data-type="Dinner">Dinner</button>
+
+  <div class="filter-block">
+    <div class="filter-label">Locations</div>
+    <div class="filter-row location-row" id="areas">
+      <button class="pill active" data-area="All">All</button>
+      <button class="pill active" data-area="Dublin">Dublin</button>
+      <button class="pill active" data-area="Galway">Galway</button>
+      <button class="pill active" data-area="Roscommon / Athlone">Roscommon / Athlone</button>
+      <button class="pill active" data-area="Limerick / Clare">Limerick / Clare</button>
+      <button class="pill active" data-area="Killarney / Kerry">Killarney / Kerry</button>
+    </div>
   </div>
+
+  <div class="filter-block">
+    <div class="filter-label">Types</div>
+    <div class="filter-row type-row" id="types">
+      <button class="pill active" data-type="All">All</button>
+      <button class="pill active" data-type="Attraction">Attractions</button>
+      <button class="pill active" data-type="Hotel">Hotels</button>
+      <button class="pill active" data-type="Lunch">Lunch</button>
+      <button class="pill active" data-type="Dinner">Dinner</button>
+    </div>
+  </div>
+
   <div class="view-row">
     <button id="listBtn" class="view-btn active">List</button>
-    <button id="mapBtn" class="view-btn">Map</button>
     <button id="searchTabBtn" class="view-btn">Map - Google</button>
     <button id="itineraryBtn" class="view-btn">Itinerary</button>
   </div>
@@ -50,12 +59,6 @@
 
   <section id="listView"><div id="cards" class="cards"></div></section>
 
-  <section id="mapView">
-    <div id="mapStatus" class="map-status">Open the map to build the place index once. It will continue loading in the background if you leave the tab.</div>
-    <div id="map"></div>
-    <p class="map-note">Map data © OpenStreetMap contributors. Place coordinates are cached on this device. Directions open in Google Maps.</p>
-  </section>
-
   <section id="searchView">
     <div class="search-panel">
       <div id="googleKeySetup" class="google-key-setup">
@@ -67,9 +70,26 @@
         </div>
       </div>
 
-      <div id="placeSearchStatus" class="search-status">Google Places will load after the API key is saved on this device.</div>
-
       <div id="googleSearchControls" hidden>
+        <div class="google-map-header">
+          <div class="usage-anchor">
+            <button id="googleUsageBtn" class="usage-icon" type="button" aria-label="Google usage" title="Google usage">◔</button>
+            <div id="googleUsagePanel" class="usage-panel" hidden>
+              <div class="usage-panel-head">
+                <strong>Google usage</strong>
+                <button id="googleUsageClose" type="button" aria-label="Close">×</button>
+              </div>
+              <div id="googleUsageContent"></div>
+              <label class="usage-toggle"><input id="googleLimiterToggle" type="checkbox" checked> Safety limiter enabled</label>
+              <div class="usage-note">This is a local request counter for this device, not Google Cloud's authoritative billing total.</div>
+            </div>
+          </div>
+          <div class="google-map-heading">
+            <strong>Map - Google</strong>
+            <span id="googleListedStatus">Holiday pins are loading…</span>
+          </div>
+        </div>
+
         <div class="google-search-toolbar">
           <div class="google-query-wrap">
             <input id="googlePlaceQuery" type="search" placeholder="Search Google Maps…" autocomplete="off" aria-label="Search Google Maps">
@@ -87,12 +107,11 @@
         </div>
 
         <div class="search-status-row">
-          <span>Listed holiday places stay on the map. Google results are added on top.</span>
+          <span id="placeSearchStatus">Google Places ready.</span>
           <button id="googleApiKeyForget" class="small-btn" type="button">Change key</button>
         </div>
 
         <div id="searchMap"></div>
-
         <div id="googlePlaceDetail" class="google-place-detail" hidden></div>
         <div id="placeSearchResults" class="search-results"></div>
       </div>
@@ -151,16 +170,13 @@
   </div>
 </div>
 
-<script>window.L_DISABLE_3D = true;</script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
- integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 <script>window.HOLIDAY_ITEMS=[];</script>
 <script src="data-1.js"></script><script src="data-2.js"></script><script src="data-3.js"></script>
 <script src="data-4.js"></script><script src="data-5.js"></script><script src="data-6.js"></script>
 <script src="source-data.js?v=1"></script>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 <script src="itinerary.js?v=3"></script>
-<script src="search.js?v=3"></script>
+<script src="search.js?v=4"></script>
 </body>
 </html>
