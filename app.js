@@ -228,7 +228,11 @@ function showView(view){
  if(view==="map"){
   initMap();stabiliseMapSize();
   const s=mapCacheSummary();
-  setTimeout(()=>{redrawMarkers(true);if(!placeIndexStarted||s.pending>0)indexAllPlacesOnce();else indexStatus(ITEMS.length,ITEMS.length,s.failed)},80);
+  setTimeout(()=>{
+   redrawMarkers(true);
+   if(s.pending>0)indexAllPlacesOnce();
+   else{placeIndexStarted=true;placeIndexFinished=true;indexStatus(ITEMS.length,ITEMS.length,s.failed)}
+  },80);
  }
  if(view==="itinerary")document.dispatchEvent(new CustomEvent("holidayapp:itinerary-opened"));
  if(view==="search")document.dispatchEvent(new CustomEvent("holidayapp:search-opened"));
@@ -237,7 +241,9 @@ function refresh(){
  render();
  if(state.view==="map"){
   initMap();stabiliseMapSize();redrawMarkers(true);
-  const s=mapCacheSummary();if(!placeIndexStarted||s.pending>0)indexAllPlacesOnce();
+  const s=mapCacheSummary();
+  if(s.pending>0)indexAllPlacesOnce();
+  else{placeIndexStarted=true;placeIndexFinished=true;indexStatus(ITEMS.length,ITEMS.length,s.failed)}
  }
 }
 function useGps(){
