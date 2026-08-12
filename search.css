@@ -5,3 +5,37 @@
 .google-place-detail[hidden]{display:none}.google-detail-card{position:relative;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}.google-detail-body{padding:13px}.google-detail-body h2{margin:0 0 4px;font-size:1.18rem}.google-detail-body p{margin:0;color:var(--muted);font-size:.82rem;line-height:1.4}.google-detail-close{position:absolute;right:8px;top:8px;z-index:3;width:34px;height:34px;border-radius:50%;border:1px solid rgba(0,0,0,.15);background:rgba(255,255,255,.95);font-size:1.25rem;cursor:pointer}.detail-line{font-size:.8rem;margin-top:7px;color:#45534c}.detail-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}.google-popup{font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}.google-popup a{display:inline-block;margin-top:5px}
 @media(min-width:620px){.google-search-toolbar{grid-template-columns:minmax(0,1fr) auto auto}.google-search-toolbar #searchThisAreaBtn{grid-column:auto}.search-result{grid-template-columns:190px minmax(0,1fr);align-items:start}.search-result:not(:has(.google-photo)){grid-template-columns:minmax(0,1fr)}.search-result .search-result-actions{grid-column:1/-1}.google-photo img{height:120px}}
 @media(min-width:900px){#searchMap{height:66vh}.search-result{grid-template-columns:180px minmax(0,1fr) auto;align-items:center}.search-result:not(:has(.google-photo)){grid-template-columns:minmax(0,1fr) auto}.search-result .search-result-actions{grid-column:auto}.google-photo img{height:115px}}
+
+/* Compact Map - Google controls */
+#googleSearchControls{display:grid;grid-template-columns:36px minmax(0,1fr);gap:5px 6px;align-items:center}
+.google-map-header{grid-column:1;grid-row:1;display:block;padding:0;border:0;background:transparent;border-radius:0;overflow:visible}
+.google-map-heading{display:none}
+.usage-anchor{width:36px;height:38px;z-index:40}
+.usage-icon{width:36px;height:38px;border-radius:10px;background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.usage-icon:hover{filter:brightness(1.05)}
+.usage-panel{top:43px;z-index:120}
+.google-search-toolbar{grid-column:2;grid-row:1;display:grid;grid-template-columns:minmax(0,1fr) 44px 50px;gap:5px;padding:0;border:0;background:transparent;border-radius:0;align-items:center}
+.google-query-wrap input{min-height:38px;height:38px;padding:6px 9px;border-radius:10px}
+.google-search-toolbar .btn{min-height:38px;height:38px;padding:5px 7px;border-radius:10px}
+#placeSearchBtn,#searchThisAreaBtn{font-size:0;min-width:0}
+#placeSearchBtn::after{content:"Go";font-size:.75rem;font-weight:800}
+#searchThisAreaBtn::after{content:"Area";font-size:.72rem;font-weight:800}
+.google-search-toolbar #searchThisAreaBtn{grid-column:auto}
+.google-suggestions{top:41px}
+.google-category-row{grid-column:1/-1;grid-row:2;gap:4px;margin:0;padding:0;min-width:0}
+.google-category{padding:5px 9px;font-size:.7rem;line-height:1.15}
+.search-status-row{grid-column:1/-1;grid-row:3;min-height:24px;padding:0 2px;border:0;background:transparent;border-radius:0;gap:5px}
+.search-status-row span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.67rem;line-height:1.2}
+#googleApiKeyForget{font-size:0;min-height:24px;padding:2px 7px;border-radius:7px;flex:0 0 auto}
+#googleApiKeyForget::after{content:"Key";font-size:.66rem;font-weight:800}
+#searchMap{grid-column:1/-1;grid-row:4;margin-top:0}
+.google-place-detail{grid-column:1/-1;grid-row:5}
+.search-results{grid-column:1/-1;grid-row:6}
+@media(min-width:620px){
+ #googleSearchControls{grid-template-columns:38px minmax(0,1fr)}
+ .usage-anchor{width:38px}.usage-icon{width:38px}
+ .google-search-toolbar{grid-template-columns:minmax(0,1fr) 58px 66px}
+ #placeSearchBtn::after{content:"Search"}
+ #searchThisAreaBtn::after{content:"Area"}
+ .google-category{padding:5px 10px;font-size:.72rem}
+}
