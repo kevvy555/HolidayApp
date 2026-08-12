@@ -12,11 +12,11 @@
 <link rel="stylesheet" href="search.css?v=3">
 </head>
 <body>
-<header><div class="wrap"><h1>Ireland Holiday Guide</h1><p>Hotels, attractions, food, OpenStreetMap, Google map search and itinerary.</p></div></header>
+<header><div class="wrap"><h1>Ireland Holiday Guide</h1><p>Hotels, attractions, food, maps, Google search and itinerary.</p></div></header>
 
 <div class="toolbar-wrap"><div class="toolbar">
   <div class="controls">
-    <input id="search" type="search" placeholder="Search name or description…" autocomplete="off">
+    <input id="search" type="search" placeholder="Search listed places…" autocomplete="off">
     <select id="area">
       <option value="All">All locations</option>
       <option>Dublin</option><option>Galway</option><option>Roscommon / Athlone</option>
@@ -70,27 +70,30 @@
       <div id="placeSearchStatus" class="search-status">Google Places will load after the API key is saved on this device.</div>
 
       <div id="googleSearchControls" hidden>
-        <div class="search-controls">
-          <label>Area
-            <select id="placeSearchArea">
-              <option value="All">All Ireland</option>
-              <option>Dublin</option><option>Galway</option><option>Roscommon / Athlone</option>
-              <option>Limerick / Clare</option><option>Killarney / Kerry</option>
-            </select>
-          </label>
-
-          <div class="google-search-box">
-            <div id="placeAutocompleteHost"></div>
-            <button id="placeSearchBtn" class="btn primary" type="button">Search</button>
+        <div class="google-search-toolbar">
+          <div class="google-query-wrap">
+            <input id="googlePlaceQuery" type="search" placeholder="Search Google Maps…" autocomplete="off" aria-label="Search Google Maps">
+            <div id="googleSuggestions" class="google-suggestions" hidden></div>
           </div>
+          <button id="placeSearchBtn" class="btn primary" type="button">Search</button>
+          <button id="searchThisAreaBtn" class="btn secondary" type="button">Search this area</button>
+        </div>
 
-          <div class="search-status-row">
-            <span>Google Places search. Select a suggestion or press Search for multiple results.</span>
-            <button id="googleApiKeyForget" class="small-btn" type="button">Change key</button>
-          </div>
+        <div class="google-category-row" id="googleCategoryRow">
+          <button class="google-category" data-google-query="restaurants" type="button">Restaurants</button>
+          <button class="google-category" data-google-query="cafes" type="button">Cafés</button>
+          <button class="google-category" data-google-query="things to do" type="button">Attractions</button>
+          <button class="google-category" data-google-query="hotels" type="button">Hotels</button>
+        </div>
+
+        <div class="search-status-row">
+          <span>Listed holiday places stay on the map. Google results are added on top.</span>
+          <button id="googleApiKeyForget" class="small-btn" type="button">Change key</button>
         </div>
 
         <div id="searchMap"></div>
+
+        <div id="googlePlaceDetail" class="google-place-detail" hidden></div>
         <div id="placeSearchResults" class="search-results"></div>
       </div>
     </div>
@@ -125,7 +128,7 @@
       </div>
     </div>
 
-    <div id="itineraryEmpty" class="itinerary-empty">Nothing planned for this day yet. Use <strong>Add</strong> on any List or Search result.</div>
+    <div id="itineraryEmpty" class="itinerary-empty">Nothing planned for this day yet. Use <strong>Add</strong> on any List or Google result.</div>
 
     <div id="itinerarySections" class="itinerary-sections">
       <section class="day-section" data-day-section="Anytime"><div class="section-divider"><span class="section-badge anytime">Anytime</span></div><div class="itinerary-list" data-section="Anytime"></div></section>
@@ -150,7 +153,7 @@
 
 <script>window.L_DISABLE_3D = true;</script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
- integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+ integrity="sha256-20nQCchB9coqIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 <script>window.HOLIDAY_ITEMS=[];</script>
 <script src="data-1.js"></script><script src="data-2.js"></script><script src="data-3.js"></script>
