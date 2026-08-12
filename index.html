@@ -9,10 +9,10 @@
  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <link rel="stylesheet" href="style.css?v=4">
 <link rel="stylesheet" href="itinerary.css?v=2">
-<link rel="stylesheet" href="search.css?v=1">
+<link rel="stylesheet" href="search.css?v=2">
 </head>
 <body>
-<header><div class="wrap"><h1>Ireland Holiday Guide</h1><p>Hotels, attractions, food, map, search and itinerary.</p></div></header>
+<header><div class="wrap"><h1>Ireland Holiday Guide</h1><p>Hotels, attractions, food, map, Google search and itinerary.</p></div></header>
 
 <div class="toolbar-wrap"><div class="toolbar">
   <div class="controls">
@@ -58,22 +58,41 @@
 
   <section id="searchView">
     <div class="search-panel">
-      <div class="search-controls">
-        <label>Area
-          <select id="placeSearchArea">
-            <option value="All">All Ireland</option>
-            <option>Dublin</option><option>Galway</option><option>Roscommon / Athlone</option>
-            <option>Limerick / Clare</option><option>Killarney / Kerry</option>
-          </select>
-        </label>
-        <div class="search-query-row">
-          <input id="placeSearch" type="search" placeholder="Search places, e.g. vegan restaurant, castle, beach…" autocomplete="off">
-          <button id="placeSearchBtn" class="btn primary" type="button">Search</button>
+      <div id="googleKeySetup" class="google-key-setup">
+        <h2>Google Places setup</h2>
+        <p>Paste your restricted Google Maps browser key once on this device. It is stored in this browser only and is not saved back to GitHub.</p>
+        <div class="google-key-row">
+          <input id="googleApiKeyInput" type="password" placeholder="Google Maps API key" autocomplete="off" spellcheck="false">
+          <button id="googleApiKeySave" class="btn primary" type="button">Save key</button>
         </div>
-        <div id="placeSearchStatus" class="search-status">Search uses OpenStreetMap place data. Results can be added directly to the itinerary.</div>
       </div>
-      <div id="searchMap"></div>
-      <div id="placeSearchResults" class="search-results"></div>
+
+      <div id="placeSearchStatus" class="search-status">Google Places will load after the API key is saved on this device.</div>
+
+      <div id="googleSearchControls" hidden>
+        <div class="search-controls">
+          <label>Area
+            <select id="placeSearchArea">
+              <option value="All">All Ireland</option>
+              <option>Dublin</option><option>Galway</option><option>Roscommon / Athlone</option>
+              <option>Limerick / Clare</option><option>Killarney / Kerry</option>
+            </select>
+          </label>
+
+          <div class="google-search-box">
+            <div id="placeAutocompleteHost"></div>
+            <button id="placeSearchBtn" class="btn primary" type="button">Search</button>
+          </div>
+
+          <div class="search-status-row">
+            <span>Google Places search. Select a suggestion or press Search for multiple results.</span>
+            <button id="googleApiKeyForget" class="small-btn" type="button">Change key</button>
+          </div>
+        </div>
+
+        <div id="searchMap"></div>
+        <div id="placeSearchResults" class="search-results"></div>
+      </div>
     </div>
   </section>
 
@@ -139,6 +158,6 @@
 <script src="source-data.js?v=1"></script>
 <script src="app.js?v=4"></script>
 <script src="itinerary.js?v=3"></script>
-<script src="search.js?v=1"></script>
+<script src="search.js?v=2"></script>
 </body>
 </html>
