@@ -15,99 +15,47 @@ const GOOGLE_AREA_CENTERS={
   "Limerick / Clare":{lat:52.75,lng:-8.95,zoom:9},
   "Killarney / Kerry":{lat:52.05,lng:-9.75,zoom:9}
 };
-const LISTED_PIN_STYLE={
-  Attraction:{background:"#c23a3a",glyph:"★"},
-  Hotel:{background:"#2f6eb6",glyph:"H"},
-  Lunch:{background:"#6aa84f",glyph:"L"},
-  Dinner:{background:"#23704a",glyph:"D"}
-};
-
-const SEARCH_VIEW=document.getElementById("searchView");
-const SEARCH_TAB_BUTTON=document.getElementById("searchTabBtn");
-if(SEARCH_TAB_BUTTON)SEARCH_TAB_BUTTON.textContent="Map - Google";
-if(SEARCH_VIEW){
-  SEARCH_VIEW.innerHTML=`
-    <div class="search-panel">
-      <div id="googleKeySetup" class="google-key-setup">
-        <h2>Google Maps setup</h2>
-        <p>Paste your restricted browser API key once on this device. It remains in this browser only.</p>
-        <div class="google-key-row">
-          <input id="googleApiKeyInput" type="password" placeholder="Google Maps API key" autocomplete="off" spellcheck="false">
-          <button id="googleApiKeySave" class="btn primary" type="button">Save key</button>
-        </div>
-      </div>
-      <div id="googleSearchControls" hidden>
-        <div class="google-map-toolbar">
-          <h2>Google Map & Place Search</h2>
-          <div class="google-map-toolbar-note">The normal Location, Type and text filters above also filter the holiday pins on this Google map.</div>
-          <div class="google-search-grid">
-            <div>
-              <div class="google-map-toolbar-note">Find a specific place</div>
-              <div id="placeAutocompleteHost"></div>
-            </div>
-            <div>
-              <div class="google-map-toolbar-note">General Google Places search</div>
-              <div class="google-text-row">
-                <input id="googleTextSearchInput" type="search" placeholder="e.g. vegetarian restaurant, castle, beach…" autocomplete="off">
-                <button id="placeSearchBtn" class="btn primary" type="button">Search</button>
-              </div>
-            </div>
-          </div>
-          <button id="googleApiKeyForget" class="small-btn" type="button">Forget saved key</button>
-        </div>
-      </div>
-      <div id="placeSearchStatus" class="search-status">Google Maps will load after the API key is available on this device.</div>
-      <div id="googleListedStatus" class="listed-status"></div>
-      <div class="google-map-legend">
-        <span class="ga">Attractions</span><span class="gh">Hotels</span><span class="gl">Lunch</span><span class="gd">Dinner</span><span class="gs">Google search result</span>
-      </div>
-      <div id="searchMap"></div>
-      <div id="placeSearchResults" class="search-results"></div>
-    </div>`;
-}
-
-function retryPreviouslyFailedCoordsOnce(){
-  const rev="2026-08-12-google-map-v1";
-  if(localStorage.getItem("holidayapp_coord_retry_revision")===rev)return;
-  const cache=window.HolidayApp?.coordCache;if(!cache)return;
-  let changed=false;
-  for(const [k,v] of Object.entries(cache)){if(v?.failed){delete cache[k];changed=true;}}
-  if(changed)localStorage.setItem("holidayapp_coords_v2",JSON.stringify(cache));
-  localStorage.setItem("holidayapp_coord_retry_revision",rev);
-}
-retryPreviouslyFailedCoordsOnce();
+const GOOGLE_PIN={Attraction:{className:"attraction",glyph:"★"},Hotel:{className:"hotel",glyph:"H"},Lunch:{className:"lunch",glyph:"L"},Dinner:{className:"dinner",glyph:"D"}};
+const GOOGLE_RESULT_FIELDS=[
+  "id","displayName","formattedAddress","shortFormattedAddress","location","viewport",
+  "websiteURI","googleMapsURI","primaryType","primaryTypeDisplayName","types","rating","userRatingCount",
+  "currentOpeningHours","regularOpeningHours","utcOffsetMinutes","priceLevel","nationalPhoneNumber",
+  "internationalPhoneNumber","photos","businessStatus"
+];
 
 let googleMapsLoadPromise=null;
 let googleMap=null,googleInfoWindow=null;
-let listedMarkers=[],resultMarkers=[],searchResults=[],placeAutocomplete=null;
-let GooglePlace=null,AdvancedMarkerElement=null,PinElement=null,LatLngBounds=null;
-let listedIndexPromise=null;
+let GooglePlace=null,AdvancedMarkerElement=null,LatLngBounds=null,AutocompleteSuggestion=null,AutocompleteSessionToken=null;
+let listedMarkers=[],resultMarkers=[],meMarker=null,searchResults=[];
+let autocompleteToken=null,autocompleteSuggestions=[],autocompleteTimer=null,autocompleteRequestId=0;
+let activeResultIndex=-1,lastSearchQuery="",listedIndexPromise=null;
 
 const GS={
-  keySetup:document.getElementById("googleKeySetup"),
-  keyInput:document.getElementById("googleApiKeyInput"),
-  keySave:document.getElementById("googleApiKeySave"),
-  keyForget:document.getElementById("googleApiKeyForget"),
-  controls:document.getElementById("googleSearchControls"),
-  autocompleteHost:document.getElementById("placeAutocompleteHost"),
-  textInput:document.getElementById("googleTextSearchInput"),
-  button:document.getElementById("placeSearchBtn"),
-  status:document.getElementById("placeSearchStatus"),
-  listedStatus:document.getElementById("googleListedStatus"),
-  map:document.getElementById("searchMap"),
-  results:document.getElementById("placeSearchResults")
+  keySetup:document.getElementById("googleKeySetup"),keyInput:document.getElementById("googleApiKeyInput"),
+  keySave:document.getElementById("googleApiKeySave"),keyForget:document.getElementById("googleApiKeyForget"),
+  controls:document.getElementById("googleSearchControls"),query:document.getElementById("googlePlaceQuery"),
+  button:document.getElementById("placeSearchBtn"),searchArea:document.getElementById("searchThisAreaBtn"),
+  suggestions:document.getElementById("googleSuggestions"),categories:document.getElementById("googleCategoryRow"),
+  status:document.getElementById("placeSearchStatus"),map:document.getElementById("searchMap"),
+  detail:document.getElementById("googlePlaceDetail"),results:document.getElementById("placeSearchResults")
 };
 
 function storedGoogleKey(){return localStorage.getItem(GOOGLE_KEY_STORAGE_KEY)||""}
 function setGoogleKey(key){localStorage.setItem(GOOGLE_KEY_STORAGE_KEY,key.trim())}
 function forgetGoogleKey(){localStorage.removeItem(GOOGLE_KEY_STORAGE_KEY);location.reload()}
+function activeArea(){return window.HolidayApp?.state?.area||"All"}
+function activeBounds(){return GOOGLE_AREA_BOUNDS[activeArea()]||GOOGLE_AREA_BOUNDS.All}
+function activeCenter(){return GOOGLE_AREA_CENTERS[activeArea()]||GOOGLE_AREA_CENTERS.All}
+function holidayKey(item){return window.HolidayApp?.itemKey?.(item)||(item.name+"|"+item.location)}
+function mapLink(item){return window.HolidayApp?.maps?.(item)||("https://www.google.com/maps?q="+encodeURIComponent(item.location||item.name))}
+function dirLink(item){return window.HolidayApp?.directions?.(item)||("https://www.google.com/maps/dir/?api=1&destination="+encodeURIComponent(item.location||item.name)+"&travelmode=driving")}
+function safe(v){return window.HolidayApp?.esc?.(v)||String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
 
 function loadGoogleMapsApi(){
   const key=storedGoogleKey();
   if(!key)return Promise.reject(new Error("No Google Maps API key configured"));
   if(window.google?.maps?.importLibrary)return Promise.resolve();
   if(googleMapsLoadPromise)return googleMapsLoadPromise;
-
   googleMapsLoadPromise=new Promise((resolve,reject)=>{
     const callback="__holidayAppGoogleMapsReady";
     window[callback]=()=>{delete window[callback];resolve();};
@@ -115,28 +63,21 @@ function loadGoogleMapsApi(){
     script.async=true;script.defer=true;
     script.src="https://maps.googleapis.com/maps/api/js?key="+encodeURIComponent(key)+
       "&loading=async&v=weekly&language=en&region=IE&auth_referrer_policy=origin&callback="+callback;
-    script.onerror=()=>{
-      delete window[callback];googleMapsLoadPromise=null;
-      reject(new Error("Google Maps JavaScript API failed to load"));
-    };
+    script.onerror=()=>{delete window[callback];googleMapsLoadPromise=null;reject(new Error("Google Maps JavaScript API failed to load"));};
     document.head.appendChild(script);
   });
   return googleMapsLoadPromise;
 }
 
-function activeArea(){return window.HolidayApp?.state?.area||"All"}
-function activeBounds(){return GOOGLE_AREA_BOUNDS[activeArea()]||GOOGLE_AREA_BOUNDS.All}
-function activeCenter(){return GOOGLE_AREA_CENTERS[activeArea()]||GOOGLE_AREA_CENTERS.All}
 function listedItemsForGoogle(){
   const st=window.HolidayApp?.state||{type:"All",area:"All",search:""};
   const q=(st.search||"").trim().toLowerCase();
-  return ITEMS.filter(item=>
+  return (window.HOLIDAY_ITEMS||[]).filter(item=>
     (st.type==="All"||item.type===st.type)&&
     (st.area==="All"||item.area===st.area)&&
     (!q||[item.name,item.location,item.area,item.type,item.description].join(" ").toLowerCase().includes(q))
   );
 }
-
 function inferGoogleArea(address){
   const s=(address||"").toLowerCase();
   if(s.includes("dublin"))return"Dublin";
@@ -148,12 +89,9 @@ function inferGoogleArea(address){
 }
 function inferGoogleType(place){
   const types=new Set([place.primaryType,...(place.types||[])].filter(Boolean));
-  const hotels=["hotel","lodging","motel","bed_and_breakfast","guest_house","hostel","resort_hotel"];
-  const lunch=["cafe","coffee_shop","bakery","sandwich_shop","meal_takeaway","food_court","brunch_restaurant","breakfast_restaurant"];
-  const dinner=["restaurant","pub","bar","gastropub","steak_house","seafood_restaurant","italian_restaurant","indian_restaurant","thai_restaurant","chinese_restaurant","pizza_restaurant"];
-  if(hotels.some(x=>types.has(x)))return"Hotel";
-  if(lunch.some(x=>types.has(x)))return"Lunch";
-  if(dinner.some(x=>types.has(x))||[...types].some(x=>x&&x.endsWith("_restaurant")))return"Dinner";
+  if(["hotel","lodging","motel","bed_and_breakfast","guest_house","hostel","resort_hotel"].some(x=>types.has(x)))return"Hotel";
+  if(["cafe","coffee_shop","bakery","sandwich_shop","meal_takeaway","food_court","brunch_restaurant","breakfast_restaurant"].some(x=>types.has(x)))return"Lunch";
+  if(["restaurant","pub","bar","gastropub","steak_house","seafood_restaurant","italian_restaurant","indian_restaurant","thai_restaurant","chinese_restaurant","pizza_restaurant"].some(x=>types.has(x))||[...types].some(x=>x?.endsWith("_restaurant")))return"Dinner";
   return"Attraction";
 }
 function googlePlaceItem(place,typeOverride=null){
@@ -161,196 +99,100 @@ function googlePlaceItem(place,typeOverride=null){
   const lat=loc&&typeof loc.lat==="function"?loc.lat():Number(loc?.lat);
   const lng=loc&&typeof loc.lng==="function"?loc.lng():Number(loc?.lng);
   const location=place.formattedAddress||place.shortFormattedAddress||place.displayName||"";
-  const category=place.primaryTypeDisplayName||place.primaryType||"Google place";
   return{
-    name:place.displayName||"Place",location,area:inferGoogleArea(location),
-    type:typeOverride||inferGoogleType(place),visitTime:"",
-    description:`Google Places · ${category}`,
-    website1:place.websiteURI||"",website2:place.googleMapsURI||"",
-    lat,lng,source:"Search"
+    name:place.displayName||"Place",location,area:inferGoogleArea(location),type:typeOverride||inferGoogleType(place),visitTime:"",
+    description:`Google Places · ${place.primaryTypeDisplayName||place.primaryType||"Place"}`,
+    website1:place.websiteURI||"",website2:place.googleMapsURI||"",lat,lng,source:"Search"
   };
 }
-function mapsForGooglePlace(place,item){
-  return place.googleMapsURI||("https://www.google.com/maps?q="+encodeURIComponent(item.location||item.name));
+function googleMapsForPlace(place,item){return place.googleMapsURI||mapLink(item)}
+
+function markerElement(type,result=false,label=""){
+  const info=GOOGLE_PIN[type]||GOOGLE_PIN.Attraction;
+  const el=document.createElement("div");
+  el.className=result?"google-result-pin":`google-listed-pin ${info.className}`;
+  el.textContent=label||info.glyph;
+  return el;
+}
+function clearMarkers(arr){for(const marker of arr)marker.map=null;arr.length=0;}
+
+function photoUri(place,w=500,h=320){try{return place.photos?.[0]?.getURI({maxWidth:w,maxHeight:h})||""}catch{return""}}
+function priceText(place){
+  const raw=String(place.priceLevel??"").toLowerCase();if(!raw)return"";
+  if(raw.includes("free"))return"Free";if(raw.includes("very")&&raw.includes("expensive"))return"££££";if(raw.includes("expensive"))return"£££";if(raw.includes("moderate"))return"££";if(raw.includes("inexpensive"))return"£";
+  const n=Number(place.priceLevel);if(Number.isFinite(n))return n===0?"Free":"£".repeat(Math.min(4,Math.max(1,n)));return"";
+}
+function openText(place){
+  const periods=place.currentOpeningHours?.periods,offset=Number(place.utcOffsetMinutes);if(!Array.isArray(periods)||!periods.length||!Number.isFinite(offset))return"";
+  const now=new Date(Date.now()+offset*60000);let current=now.getUTCDay()*1440+now.getUTCHours()*60+now.getUTCMinutes();
+  for(const p of periods){if(!p?.open)continue;let start=p.open.day*1440+p.open.hour*60+p.open.minute;let end=p.close?p.close.day*1440+p.close.hour*60+p.close.minute:start+10080;if(end<=start)end+=10080;let cur=current;if(cur<start&&end>10080)cur+=10080;if(cur>=start&&cur<end)return"Open now";}return"Closed";
+}
+function ratingHtml(place){return Number.isFinite(Number(place.rating))?`<span class="stars">★ ${Number(place.rating).toFixed(1)}${place.userRatingCount?` (${Number(place.userRatingCount).toLocaleString()})`:""}</span>`:""}
+function metaHtml(place){
+  const bits=[],open=openText(place),price=priceText(place),category=place.primaryTypeDisplayName||place.primaryType||"Place";
+  if(category)bits.push(`<span class="search-result-category">${safe(category)}</span>`);if(place.rating)bits.push(ratingHtml(place));if(open)bits.push(`<span class="${open==="Open now"?"open-text":"closed-text"}">${open}</span>`);if(price)bits.push(`<span class="price-text">${price}</span>`);return bits.join("");
 }
 
-function clearMarkerArray(arr){for(const marker of arr)marker.map=null;arr.length=0;}
-function listedPin(item){
-  const style=LISTED_PIN_STYLE[item.type]||LISTED_PIN_STYLE.Attraction;
-  const pin=new PinElement({background:style.background,borderColor:"#ffffff",glyphColor:"#ffffff",glyph:style.glyph,scale:0.9});
-  return pin.element;
-}
-function resultPin(type){
-  const style=LISTED_PIN_STYLE[type]||LISTED_PIN_STYLE.Attraction;
-  const pin=new PinElement({background:"#7b4db3",borderColor:"#ffffff",glyphColor:"#ffffff",glyph:style.glyph,scale:1.05});
-  return pin.element;
-}
-
-function drawListedPlaces(fit=false){
-  if(!googleMap||!AdvancedMarkerElement||!PinElement)return;
-  clearMarkerArray(listedMarkers);
-  const bounds=new LatLngBounds();let count=0,missing=0;
+function renderListedMarkers(fit=false){
+  if(!googleMap||!AdvancedMarkerElement)return;clearMarkers(listedMarkers);if(meMarker){meMarker.map=null;meMarker=null;}
+  const bounds=new LatLngBounds();let count=0;
   for(const item of listedItemsForGoogle()){
-    const c=window.HolidayApp?.coordCache?.[window.HolidayApp.itemKey(item)];
-    if(!c||c.failed||!Number.isFinite(Number(c.lat))||!Number.isFinite(Number(c.lng))){missing++;continue;}
-    const pos={lat:Number(c.lat),lng:Number(c.lng)};
-    const marker=new AdvancedMarkerElement({map:googleMap,position:pos,title:item.name,content:listedPin(item)});
-    marker.addListener("gmp-click",()=>{
-      googleInfoWindow.setContent(`<div class="google-popup"><strong>${esc(item.name)}</strong><br><span>${esc(item.type)} · ${esc(item.area)}</span><br><a target="_blank" rel="noopener" href="${esc(maps(item))}">Google Maps</a></div>`);
-      googleInfoWindow.open({map:googleMap,anchor:marker,shouldFocus:false});
-    });
-    listedMarkers.push(marker);bounds.extend(pos);count++;
+    const c=window.HolidayApp?.coordCache?.[holidayKey(item)];if(!c||c.failed||!Number.isFinite(Number(c.lat))||!Number.isFinite(Number(c.lng)))continue;
+    const pos={lat:Number(c.lat),lng:Number(c.lng)};const marker=new AdvancedMarkerElement({map:googleMap,position:pos,title:item.name,content:markerElement(item.type)});marker.addListener("gmp-click",()=>showListedDetail(item,marker));listedMarkers.push(marker);bounds.extend(pos);count++;
   }
-  if(GS.listedStatus){
-    const total=listedItemsForGoogle().length;
-    GS.listedStatus.textContent=missing?`${count} of ${total} filtered holiday places shown; ${missing} location${missing===1?" is":"s are"} still being indexed.`:`${count} filtered holiday place${count===1?"":"s"} shown.`;
-  }
+  const gps=window.HolidayApp?.state?.gps;if(gps){const meEl=markerElement("Attraction",false,"●");meEl.className="google-listed-pin me";meMarker=new AdvancedMarkerElement({map:googleMap,position:{lat:gps.lat,lng:gps.lng},title:"You are here",content:meEl});bounds.extend({lat:gps.lat,lng:gps.lng});}
   if(fit&&count&&!searchResults.length)googleMap.fitBounds(bounds,60);
 }
+function ensureListedIndex(){renderListedMarkers(false);if(listedIndexPromise)return listedIndexPromise;listedIndexPromise=Promise.resolve(window.HolidayApp?.indexAllPlacesOnce?.()).then(()=>renderListedMarkers(true)).catch(()=>renderListedMarkers(false));return listedIndexPromise;}
 
-async function ensureListedIndex(){
-  if(listedIndexPromise)return listedIndexPromise;
-  drawListedPlaces(false);
-  listedIndexPromise=window.HolidayApp?.indexAllPlacesOnce?.()
-    ?.then(()=>{drawListedPlaces(true);})
-    ?.catch(err=>{console.warn("Listed place indexing failed",err);drawListedPlaces(false);})||Promise.resolve();
-  return listedIndexPromise;
-}
-
-function renderGoogleResults(){
+function renderResults(){
   GS.results.innerHTML=searchResults.length?searchResults.map((place,idx)=>{
-    const item=googlePlaceItem(place),category=place.primaryTypeDisplayName||place.primaryType||"Place";
-    return`<article class="search-result">
-      <div class="search-result-main"><h3>${esc(item.name)}</h3><p>${esc(item.location)}</p><div class="search-result-category">${esc(category)}</div></div>
-      <div class="search-result-actions">
-        <select class="search-type-select" data-search-type-index="${idx}" aria-label="Itinerary type for ${esc(item.name)}">
-          ${["Attraction","Hotel","Lunch","Dinner"].map(t=>`<option ${t===item.type?"selected":""}>${t}</option>`).join("")}
-        </select>
-        <button class="btn add-search-result" type="button" data-search-add="${idx}">Add</button>
-        ${item.website1?`<a class="btn" target="_blank" rel="noopener" href="${esc(item.website1)}">Website</a>`:""}
-        <a class="btn secondary" target="_blank" rel="noopener" href="${esc(mapsForGooglePlace(place,item))}">Google Maps</a>
-      </div>
-    </article>`;
-  }).join(""):'<div class="search-empty">Use Google search above to find extra restaurants, attractions, hotels, beaches, shops or other places.</div>';
+    const item=googlePlaceItem(place),photo=photoUri(place,260,180),selected=idx===activeResultIndex?" selected":"";
+    return`<article class="search-result${selected}" data-result-index="${idx}">${photo?`<img class="search-result-photo" src="${safe(photo)}" alt="">`:`<div class="search-result-photo placeholder">⌖</div>`}<div class="search-result-main"><h3>${safe(item.name)}</h3><p>${safe(item.location)}</p><div class="search-result-meta">${metaHtml(place)}</div></div><div class="search-result-actions"><select class="search-type-select" data-search-type-index="${idx}" aria-label="Itinerary type for ${safe(item.name)}">${["Attraction","Hotel","Lunch","Dinner"].map(t=>`<option ${t===item.type?"selected":""}>${t}</option>`).join("")}</select><button class="btn add-search-result" type="button" data-search-add="${idx}">Add</button><button class="btn" type="button" data-show-detail="${idx}">Details</button>${item.website1?`<a class="btn" target="_blank" rel="noopener" href="${safe(item.website1)}">Website</a>`:""}<a class="btn secondary" target="_blank" rel="noopener" href="${safe(googleMapsForPlace(place,item))}">Google Maps</a></div></article>`;
+  }).join(""):'<div class="search-empty">Search Google Maps above, or use a category shortcut.</div>';
+}
+function drawResultMarkers(fit=true){
+  if(!googleMap||!AdvancedMarkerElement)return;clearMarkers(resultMarkers);const bounds=new LatLngBounds();let count=0;
+  searchResults.forEach((place,idx)=>{if(!place.location)return;const marker=new AdvancedMarkerElement({map:googleMap,position:place.location,title:place.displayName||"Google result",content:markerElement(inferGoogleType(place),true,String(idx+1))});marker.addListener("gmp-click",()=>showGoogleDetail(idx,marker));resultMarkers.push(marker);bounds.extend(place.location);count++;});
+  if(fit&&count===1){const p=searchResults.find(x=>x.location);if(p?.viewport)googleMap.fitBounds(p.viewport);else{googleMap.setCenter(p.location);googleMap.setZoom(15);}}else if(fit&&count>1)googleMap.fitBounds(bounds,60);
+}
+function setResults(places,fit=true){searchResults=places||[];activeResultIndex=-1;renderResults();drawResultMarkers(fit);if(!searchResults.length)GS.detail.hidden=true;}
+
+function showListedDetail(item,marker=null){
+  activeResultIndex=-1;renderResults();GS.detail.hidden=false;
+  GS.detail.innerHTML=`<div class="detail-grid"><div class="detail-photo-placeholder">${safe(GOOGLE_PIN[item.type]?.glyph||"•")}</div><div class="detail-body"><h2>${safe(item.name)}</h2><div class="detail-address">${safe(item.location)}</div><div class="detail-meta"><span class="detail-chip">${safe(item.type)}</span><span class="detail-chip">${safe(item.area)}</span><span class="detail-chip">Holiday list</span></div><div>${safe(item.description||"")}</div><div class="detail-actions"><button class="btn primary" type="button" data-detail-add-listed="${safe(holidayKey(item))}">Add to itinerary</button><a class="btn secondary" target="_blank" rel="noopener" href="${safe(mapLink(item))}">Google Maps</a>${item.website1?`<a class="btn" target="_blank" rel="noopener" href="${safe(item.website1)}">Website</a>`:""}</div></div></div>`;
+  if(marker&&googleInfoWindow){googleInfoWindow.setContent(`<strong>${safe(item.name)}</strong><br>${safe(item.type)} · ${safe(item.area)}`);googleInfoWindow.open({map:googleMap,anchor:marker,shouldFocus:false});}
+}
+function showGoogleDetail(idx,marker=null){
+  const place=searchResults[idx];if(!place)return;activeResultIndex=idx;renderResults();const item=googlePlaceItem(place),photo=photoUri(place,720,450),open=openText(place),price=priceText(place),hours=place.currentOpeningHours?.weekdayDescriptions||place.regularOpeningHours?.weekdayDescriptions||[];GS.detail.hidden=false;
+  GS.detail.innerHTML=`<div class="detail-grid">${photo?`<img class="detail-photo" src="${safe(photo)}" alt="">`:`<div class="detail-photo-placeholder">⌖</div>`}<div class="detail-body"><h2>${safe(item.name)}</h2><div class="detail-address">${safe(item.location)}</div><div class="detail-meta">${place.rating?`<span class="detail-chip">★ ${Number(place.rating).toFixed(1)}${place.userRatingCount?` · ${Number(place.userRatingCount).toLocaleString()} reviews`:""}</span>`:""}${open?`<span class="detail-chip ${open==="Open now"?"open":"closed"}">${open}</span>`:""}${price?`<span class="detail-chip">${price}</span>`:""}<span class="detail-chip">${safe(place.primaryTypeDisplayName||place.primaryType||"Place")}</span></div>${place.nationalPhoneNumber||place.internationalPhoneNumber?`<div class="detail-address">${safe(place.nationalPhoneNumber||place.internationalPhoneNumber)}</div>`:""}<div class="detail-actions"><select class="detail-type-select" id="googleDetailType">${["Attraction","Hotel","Lunch","Dinner"].map(t=>`<option ${t===item.type?"selected":""}>${t}</option>`).join("")}</select><button class="btn primary" type="button" data-detail-add-google="${idx}">Add to itinerary</button>${item.website1?`<a class="btn" target="_blank" rel="noopener" href="${safe(item.website1)}">Website</a>`:""}<a class="btn secondary" target="_blank" rel="noopener" href="${safe(googleMapsForPlace(place,item))}">Google Maps</a></div>${hours.length?`<div class="detail-hours">${hours.map(x=>safe(x)).join("<br>")}</div>`:""}</div></div>`;
+  if(place.location){googleMap.panTo(place.location);if(googleMap.getZoom()<14)googleMap.setZoom(14);}if(marker&&googleInfoWindow){googleInfoWindow.setContent(`<strong>${safe(item.name)}</strong><br>${ratingHtml(place)} ${open?`· ${safe(open)}`:""}`);googleInfoWindow.open({map:googleMap,anchor:marker,shouldFocus:false});}GS.detail.scrollIntoView({behavior:"smooth",block:"nearest"});
 }
 
-function drawSearchResults(fit=true){
-  if(!googleMap||!AdvancedMarkerElement||!PinElement)return;
-  clearMarkerArray(resultMarkers);
-  if(!searchResults.length){drawListedPlaces(false);return;}
-  const bounds=new LatLngBounds();let count=0;
-  for(let idx=0;idx<searchResults.length;idx++){
-    const place=searchResults[idx];if(!place.location)continue;
-    const selectedType=GS.results.querySelector(`[data-search-type-index="${idx}"]`)?.value||inferGoogleType(place);
-    const item=googlePlaceItem(place,selectedType);
-    const marker=new AdvancedMarkerElement({map:googleMap,position:place.location,title:item.name,content:resultPin(item.type)});
-    marker.addListener("gmp-click",()=>{
-      googleInfoWindow.setContent(`<div class="google-popup"><strong>${esc(item.name)}</strong><br><span>${esc(item.location)}</span></div>`);
-      googleInfoWindow.open({map:googleMap,anchor:marker,shouldFocus:false});
-    });
-    resultMarkers.push(marker);bounds.extend(place.location);count++;
-  }
-  if(fit&&count===1){
-    const p=searchResults.find(x=>x.location);
-    if(p?.viewport)googleMap.fitBounds(p.viewport);else{googleMap.setCenter(p.location);googleMap.setZoom(15);}
-  }else if(fit&&count>1){googleMap.fitBounds(bounds,60);}
+function restrictionForSearch(useVisibleMap=false){if(useVisibleMap&&googleMap?.getBounds){const b=googleMap.getBounds();if(b){const sw=b.getSouthWest(),ne=b.getNorthEast();return{south:sw.lat(),west:sw.lng(),north:ne.lat(),east:ne.lng()};}}return activeBounds();}
+async function textSearch(query,useVisibleMap=false){
+  query=(query||"").trim();if(!query)return;if(!GooglePlace){await initGoogleTab();if(!GooglePlace)return;}lastSearchQuery=query;GS.query.value=query;hideSuggestions();GS.button.disabled=true;GS.searchArea.disabled=true;GS.status.textContent=`Searching Google Maps for “${query}”…`;
+  try{const {places}=await GooglePlace.searchByText({textQuery:query,fields:GOOGLE_RESULT_FIELDS,locationRestriction:restrictionForSearch(useVisibleMap),language:"en",region:"ie",maxResultCount:20});setResults(places||[],true);GS.status.textContent=searchResults.length?`${searchResults.length} Google result${searchResults.length===1?"":"s"} found. Tap a pin or result for details.`:"No matching places found in this area.";}catch(err){console.error(err);GS.status.textContent=`Google Places search failed: ${err?.message||err}. Check that Maps JavaScript API, Places API and Places API (New) are allowed.`;}finally{GS.button.disabled=false;GS.searchArea.disabled=false;}
 }
 
-async function initGoogleMapTab(){
-  const key=storedGoogleKey();
-  GS.keySetup.hidden=!!key;GS.controls.hidden=!key;
-  if(!key){GS.status.textContent="Add your restricted Google Maps browser key once on this device to enable Google Maps and Places.";return;}
-  try{
-    GS.status.textContent="Loading Google Maps…";
-    await loadGoogleMapsApi();
-    const [{Map,InfoWindow},{Place,PlaceAutocompleteElement},{AdvancedMarkerElement:AME,PinElement:PE},{LatLngBounds:LLB}]=await Promise.all([
-      google.maps.importLibrary("maps"),google.maps.importLibrary("places"),google.maps.importLibrary("marker"),google.maps.importLibrary("core")
-    ]);
-    GooglePlace=Place;AdvancedMarkerElement=AME;PinElement=PE;LatLngBounds=LLB;
-    if(!googleMap){
-      const c=activeCenter();
-      googleMap=new Map(GS.map,{center:{lat:c.lat,lng:c.lng},zoom:c.zoom,mapTypeControl:false,streetViewControl:false,fullscreenControl:true,mapId:"DEMO_MAP_ID"});
-      googleInfoWindow=new InfoWindow();
-    }
-    if(!placeAutocomplete){
-      placeAutocomplete=new PlaceAutocompleteElement({includedRegionCodes:["ie"]});
-      placeAutocomplete.placeholder="Find a specific place…";
-      placeAutocomplete.locationRestriction=activeBounds();
-      GS.autocompleteHost.replaceChildren(placeAutocomplete);
-      placeAutocomplete.addEventListener("gmp-select",async({placePrediction})=>{
-        try{
-          GS.status.textContent="Loading place…";
-          const place=placePrediction.toPlace();
-          await place.fetchFields({fields:["id","displayName","formattedAddress","shortFormattedAddress","location","viewport","websiteURI","googleMapsURI","primaryType","primaryTypeDisplayName","types"]});
-          searchResults=[place];renderGoogleResults();drawSearchResults(true);
-          GS.status.textContent="1 Google place selected. The normal holiday pins remain on the map.";
-        }catch(err){console.error(err);GS.status.textContent="That place could not be loaded: "+(err?.message||err);}
-      });
-    }
-    drawListedPlaces(false);ensureListedIndex();
-    GS.status.textContent="Google Maps ready. Search for extra places; your existing holiday places are shown as coloured pins.";
-  }catch(err){
-    console.error(err);
-    GS.status.textContent="Google Maps could not load: "+(err?.message||err)+". Check Maps JavaScript API, Places API and Places API (New) are all allowed for this key.";
-  }
+function hideSuggestions(){GS.suggestions.hidden=true;GS.suggestions.innerHTML="";autocompleteSuggestions=[];}
+function renderSuggestions(){const predictions=autocompleteSuggestions.filter(x=>x?.placePrediction);if(!predictions.length){hideSuggestions();return;}GS.suggestions.innerHTML=predictions.map((s,idx)=>{const p=s.placePrediction;return`<button class="google-suggestion" type="button" data-google-suggestion="${idx}"><span class="google-suggestion-main">${safe(p.mainText?.toString?.()||p.text?.toString?.()||"Place")}</span><span class="google-suggestion-secondary">${safe(p.secondaryText?.toString?.()||"")}</span></button>`;}).join("");GS.suggestions.hidden=false;}
+async function fetchSuggestions(){
+  const q=GS.query.value.trim(),reqId=++autocompleteRequestId;if(q.length<2){hideSuggestions();return;}if(!AutocompleteSuggestion)return;if(!autocompleteToken)autocompleteToken=new AutocompleteSessionToken();
+  try{const {suggestions}=await AutocompleteSuggestion.fetchAutocompleteSuggestions({input:q,locationRestriction:restrictionForSearch(false),includedRegionCodes:["ie"],language:"en",region:"ie",sessionToken:autocompleteToken});if(reqId!==autocompleteRequestId)return;autocompleteSuggestions=suggestions||[];renderSuggestions();}catch(err){if(reqId===autocompleteRequestId){console.warn("Autocomplete failed",err);hideSuggestions();}}
+}
+async function selectSuggestion(idx){const s=autocompleteSuggestions.filter(x=>x?.placePrediction)[idx];if(!s)return;try{GS.status.textContent="Loading place details…";const place=s.placePrediction.toPlace();await place.fetchFields({fields:GOOGLE_RESULT_FIELDS});autocompleteToken=null;hideSuggestions();GS.query.value=place.displayName||s.placePrediction.text?.toString?.()||"";lastSearchQuery=GS.query.value;setResults([place],true);showGoogleDetail(0,resultMarkers[0]);GS.status.textContent="Place selected.";}catch(err){console.error(err);GS.status.textContent=`That place could not be loaded: ${err?.message||err}`;}}
+
+async function initGoogleTab(){
+  const key=storedGoogleKey();GS.keySetup.hidden=!!key;GS.controls.hidden=!key;if(!key){GS.status.textContent="Add your restricted Google Maps browser key once on this device to enable Map - Google.";return;}
+  try{GS.status.textContent="Loading Google Maps…";await loadGoogleMapsApi();const [{Map,InfoWindow},{Place,AutocompleteSuggestion:AS,AutocompleteSessionToken:AST},{AdvancedMarkerElement:AME},{LatLngBounds:LLB}]=await Promise.all([google.maps.importLibrary("maps"),google.maps.importLibrary("places"),google.maps.importLibrary("marker"),google.maps.importLibrary("core")]);GooglePlace=Place;AutocompleteSuggestion=AS;AutocompleteSessionToken=AST;AdvancedMarkerElement=AME;LatLngBounds=LLB;if(!googleMap){const c=activeCenter();googleMap=new Map(GS.map,{center:{lat:c.lat,lng:c.lng},zoom:c.zoom,mapTypeControl:false,streetViewControl:false,fullscreenControl:true,mapId:"DEMO_MAP_ID"});googleInfoWindow=new InfoWindow();googleMap.addListener("idle",()=>{if(lastSearchQuery)GS.searchArea.disabled=false;});}GS.status.textContent="Google Maps ready. Search, choose a category, or tap an existing holiday pin.";ensureListedIndex();renderListedMarkers(true);}catch(err){console.error(err);GS.status.textContent=`Google Maps could not load: ${err?.message||err}. Check the key and allow Maps JavaScript API, Places API and Places API (New).`;}
 }
 
-async function runGoogleTextSearch(){
-  if(!GooglePlace){await initGoogleMapTab();if(!GooglePlace)return;}
-  const raw=(GS.textInput?.value||"").trim();
-  if(!raw){GS.status.textContent="Type something to search for first.";return;}
-  GS.button.disabled=true;GS.status.textContent="Searching Google Places…";
-  try{
-    const request={
-      textQuery:raw,
-      fields:["id","displayName","formattedAddress","shortFormattedAddress","location","viewport","websiteURI","googleMapsURI","primaryType","primaryTypeDisplayName","types"],
-      locationRestriction:activeBounds(),language:"en",region:"ie",maxResultCount:12
-    };
-    const response=await GooglePlace.searchByText(request);
-    searchResults=response.places||[];
-    renderGoogleResults();drawSearchResults(true);
-    GS.status.textContent=searchResults.length?`${searchResults.length} Google Places result${searchResults.length===1?"":"s"} found. Purple pins are search results; coloured pins are your holiday list.`:"No matching places found in the selected location.";
-  }catch(err){
-    console.error("Google Place.searchByText failed",err);
-    const msg=err?.message||String(err);
-    GS.status.textContent=`Google Places search failed: ${msg}. Make sure Maps JavaScript API, Places API and Places API (New) are all enabled and allowed for the key.`;
-  }finally{GS.button.disabled=false;}
-}
+GS.keySave?.addEventListener("click",()=>{const key=(GS.keyInput?.value||"").trim();if(!/^AIza[0-9A-Za-z_-]{20,}$/.test(key)){GS.status.textContent="That does not look like a Google Maps API key.";return;}setGoogleKey(key);GS.keyInput.value="";GS.keySetup.hidden=true;GS.controls.hidden=false;initGoogleTab();});
+GS.keyInput?.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();GS.keySave.click();}});GS.keyForget?.addEventListener("click",forgetGoogleKey);
+GS.query?.addEventListener("input",()=>{clearTimeout(autocompleteTimer);autocompleteTimer=setTimeout(fetchSuggestions,250);});GS.query?.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();textSearch(GS.query.value,false);}else if(e.key==="Escape")hideSuggestions();});GS.button?.addEventListener("click",()=>textSearch(GS.query.value,false));GS.searchArea?.addEventListener("click",()=>textSearch(GS.query.value||lastSearchQuery,true));GS.categories?.addEventListener("click",e=>{const b=e.target.closest("[data-google-query]");if(!b)return;textSearch(b.dataset.googleQuery,false);});GS.suggestions?.addEventListener("click",e=>{const b=e.target.closest("[data-google-suggestion]");if(b)selectSuggestion(Number(b.dataset.googleSuggestion));});
+GS.results?.addEventListener("click",e=>{const add=e.target.closest("[data-search-add]");if(add){const idx=Number(add.dataset.searchAdd),place=searchResults[idx];if(place){const type=GS.results.querySelector(`[data-search-type-index="${idx}"]`)?.value||inferGoogleType(place);window.HolidayItinerary?.openItem(googlePlaceItem(place,type));}return;}const detail=e.target.closest("[data-show-detail]");if(detail){showGoogleDetail(Number(detail.dataset.showDetail),resultMarkers[Number(detail.dataset.showDetail)]);return;}if(e.target.closest("a,button,select"))return;const card=e.target.closest("[data-result-index]");if(card)showGoogleDetail(Number(card.dataset.resultIndex),resultMarkers[Number(card.dataset.resultIndex)]);});GS.results?.addEventListener("change",e=>{if(e.target.matches("[data-search-type-index]"))drawResultMarkers(false);});
+GS.detail?.addEventListener("click",e=>{const g=e.target.closest("[data-detail-add-google]");if(g){const idx=Number(g.dataset.detailAddGoogle),place=searchResults[idx];if(place){const type=document.getElementById("googleDetailType")?.value||inferGoogleType(place);window.HolidayItinerary?.openItem(googlePlaceItem(place,type));}return;}const l=e.target.closest("[data-detail-add-listed]");if(l){const item=(window.HOLIDAY_ITEMS||[]).find(x=>holidayKey(x)===l.dataset.detailAddListed);if(item)window.HolidayItinerary?.openItem(item);}});
+document.addEventListener("click",e=>{if(!e.target.closest(".google-query-wrap"))hideSuggestions();});document.addEventListener("holidayapp:search-opened",()=>{initGoogleTab().then(()=>{if(googleMap){google.maps.event.trigger(googleMap,"resize");renderListedMarkers(!searchResults.length);}});});document.addEventListener("holidayapp:list-rendered",()=>{if(googleMap)renderListedMarkers(false);});document.addEventListener("holidayapp:gps-updated",()=>{if(googleMap)renderListedMarkers(false);});
 
-function refreshGoogleForFilters(){
-  if(!googleMap)return;
-  const c=activeCenter();
-  if(placeAutocomplete)placeAutocomplete.locationRestriction=activeBounds();
-  drawListedPlaces(true);
-  if(!listedMarkers.length&&!searchResults.length){googleMap.setCenter({lat:c.lat,lng:c.lng});googleMap.setZoom(c.zoom);}
-}
-
-GS.keySave?.addEventListener("click",()=>{
-  const key=(GS.keyInput?.value||"").trim();
-  if(!/^AIza[0-9A-Za-z_-]{20,}$/.test(key)){GS.status.textContent="That does not look like a Google Maps API key.";return;}
-  setGoogleKey(key);GS.keyInput.value="";GS.keySetup.hidden=true;GS.controls.hidden=false;initGoogleMapTab();
-});
-GS.keyInput?.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();GS.keySave.click();}});
-GS.keyForget?.addEventListener("click",forgetGoogleKey);
-GS.button?.addEventListener("click",runGoogleTextSearch);
-GS.textInput?.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();runGoogleTextSearch();}});
-GS.results?.addEventListener("change",e=>{if(e.target.matches("[data-search-type-index]"))drawSearchResults(false);});
-GS.results?.addEventListener("click",e=>{
-  const b=e.target.closest("[data-search-add]");if(!b)return;
-  const idx=Number(b.dataset.searchAdd),place=searchResults[idx];if(!place)return;
-  const type=GS.results.querySelector(`[data-search-type-index="${idx}"]`)?.value||inferGoogleType(place);
-  window.HolidayItinerary?.openItem(googlePlaceItem(place,type));
-});
-
-document.getElementById("area")?.addEventListener("change",()=>setTimeout(refreshGoogleForFilters,0));
-document.getElementById("search")?.addEventListener("input",()=>setTimeout(refreshGoogleForFilters,0));
-document.getElementById("types")?.addEventListener("click",()=>setTimeout(refreshGoogleForFilters,0));
-document.addEventListener("holidayapp:gps-updated",()=>refreshGoogleForFilters());
-document.addEventListener("holidayapp:search-opened",()=>{
-  initGoogleMapTab().then(()=>{
-    if(googleMap){google.maps.event.trigger(googleMap,"resize");setTimeout(()=>{drawListedPlaces(true);ensureListedIndex();},80);}
-  });
-});
-
-renderGoogleResults();
-initGoogleMapTab();
+renderResults();initGoogleTab();
