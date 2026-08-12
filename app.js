@@ -1,15 +1,37 @@
 const ITEMS=window.HOLIDAY_ITEMS;
 const ORIGINAL_NAMES=new Set(window.HOLIDAY_ORIGINAL_NAMES||[]);
 const ITINERARY_STORAGE_KEY="holidayapp_itinerary_v1";
+const COORD_CACHE_KEY="holidayapp_coords_v2";
 const state={type:"All",area:"All",search:"",view:"list",gps:null};
-const coordCache=JSON.parse(localStorage.getItem("holidayapp_coords_v1")||"{}");
-let map=null,markerLayer=null,myMarker=null,geocodeBusy=false,geocodeGeneration=0,resizeObserver=null;
+
+function loadCoordCache(){
+  try{
+    const current=JSON.parse(localStorage.getItem(COORD_CACHE_KEY)||"null");
+    if(current&&typeof current==="object")return current;
+    const old=JSON.parse(localStorage.getItem("holidayapp_coords_v1")||"{}");
+    const migrated={};
+    for(const [k,v] of Object.entries(old)){
+      if(v&&Number.isFinite(Number(v.lat))&&Number.isFinite(Number(v.lng))){
+        migrated[k]={lat:Number(v.lat),lng:Number(v.lng)};
+      }
+    }
+    localStorage.setItem(COORD_CACHE_KEY,JSON.stringify(migrated));
+    return migrated;
+  }catch{return{}}
+}
+const coordCache=loadCoordCache();
+
+let map=null,markerLayer=null,myMarker=null,resizeObserver=null;
+let placeIndexPromise=null,placeIndexStarted=false,placeIndexFinished=false;
+let nominatimQueue=Promise.resolve(),lastNominatimAt=0;
 
 const $=id=>document.getElementById(id);
 const E={
- search:$("search"),area:$("area"),types:$("types"),listBtn:$("listBtn"),mapBtn:$("mapBtn"),itineraryBtn:$("itineraryBtn"),
+ search:$("search"),area:$("area"),types:$("types"),
+ listBtn:$("listBtn"),mapBtn:$("mapBtn"),itineraryBtn:$("itineraryBtn"),searchBtn:$("searchTabBtn"),
  gpsBtn:$("gpsBtn"),gpsStatus:$("gpsStatus"),clearBtn:$("clearBtn"),count:$("count"),cards:$("cards"),
- listView:$("listView"),mapView:$("mapView"),itineraryView:$("itineraryView"),mapStatus:$("mapStatus"),browseSummary:$("browseSummary")
+ listView:$("listView"),mapView:$("mapView"),itineraryView:$("itineraryView"),searchView:$("searchView"),
+ mapStatus:$("mapStatus"),browseSummary:$("browseSummary")
 };
 
 function esc(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
@@ -32,10 +54,14 @@ function itineraryFlags(i){
  const k=itemKey(i);
  return itineraryEntries().filter(x=>x.itemKey===k).sort((a,b)=>a.date.localeCompare(b.date)||(a.order||0)-(b.order||0));
 }
+function hasCoords(i){
+ const c=coordCache[itemKey(i)];
+ return !!(c&&!c.failed&&Number.isFinite(Number(c.lat))&&Number.isFinite(Number(c.lng)));
+}
 function km(a,b){const R=6371,r=x=>x*Math.PI/180,d1=r(b.lat-a.lat),d2=r(b.lng-a.lng),q=Math.sin(d1/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(d2/2)**2;return 2*R*Math.asin(Math.sqrt(q))}
 function distanceText(i){
  if(!state.gps)return"";
- const c=coordCache[itemKey(i)];if(!c)return"Distance pending map location";
+ const c=coordCache[itemKey(i)];if(!c||c.failed)return"";
  const m=km(state.gps,c)*.621371;return(m<10?m.toFixed(1):Math.round(m))+" miles away";
 }
 function flagsHtml(i){
@@ -94,7 +120,7 @@ function redrawMarkers(fit=false){
  if(!map)return;
  markerLayer.clearLayers();const pts=[];
  for(const i of rows()){
-  const c=coordCache[itemKey(i)];if(!c)continue;
+  const c=coordCache[itemKey(i)];if(!c||c.failed)continue;
   L.marker([c.lat,c.lng],{icon:pinIcon(i.type,pinSymbols[i.type]||"•"),title:i.name}).bindPopup(popupHtml(i)).addTo(markerLayer);
   pts.push([c.lat,c.lng]);
  }
@@ -105,52 +131,115 @@ function redrawMarkers(fit=false){
  }
  if(fit&&pts.length)map.fitBounds(pts,{padding:[30,30],maxZoom:14,animate:false});
 }
-async function geocodeVisible(){
- if(geocodeBusy){geocodeGeneration++;return}
- geocodeBusy=true;const myGen=++geocodeGeneration;
- const r=rows(),missing=r.filter(i=>!coordCache[itemKey(i)]);
- E.mapStatus.textContent=missing.length?`Locating ${missing.length} uncached place${missing.length===1?"":"s"}… markers will appear as they are found.`:`All ${r.length} filtered places are ready.`;
- redrawMarkers(true);
- for(let n=0;n<missing.length;n++){
-  if(myGen!==geocodeGeneration)break;
-  const i=missing[n];
-  try{
-   const url="https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=ie&q="+encodeURIComponent(i.name+", "+i.location);
-   const res=await fetch(url,{headers:{Accept:"application/json"}});
-   if(res.ok){
-    const data=await res.json();
-    if(data[0]){
-     coordCache[itemKey(i)]={lat:Number(data[0].lat),lng:Number(data[0].lon)};
-     localStorage.setItem("holidayapp_coords_v1",JSON.stringify(coordCache));
-     redrawMarkers(false);render();
-    }
-   }
-  }catch(err){console.warn("Geocode failed",i.name,err)}
-  E.mapStatus.textContent=`Locating places… ${Math.min(n+1,missing.length)} / ${missing.length} checked.`;
-  await new Promise(res=>setTimeout(res,1050));
+
+function saveCoordCache(){localStorage.setItem(COORD_CACHE_KEY,JSON.stringify(coordCache))}
+function areaHint(area){
+ return({"Dublin":"Dublin","Galway":"Galway","Roscommon / Athlone":"Athlone Roscommon","Limerick / Clare":"Limerick Clare","Killarney / Kerry":"Killarney Kerry"})[area]||area||"Ireland";
+}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+function nominatimRequest(params){
+ const url="https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit="+encodeURIComponent(params.limit||1)+"&countrycodes=ie"+(params.extratags?"&extratags=1":"")+"&q="+encodeURIComponent(params.q);
+ const task=nominatimQueue.then(async()=>{
+  const wait=Math.max(0,1100-(Date.now()-lastNominatimAt));
+  if(wait)await sleep(wait);
+  lastNominatimAt=Date.now();
+  const res=await fetch(url,{headers:{Accept:"application/json"}});
+  if(!res.ok)throw new Error("Nominatim "+res.status);
+  return res.json();
+ });
+ nominatimQueue=task.catch(()=>{});
+ return task;
+}
+window.HolidayNominatim={search:(q,limit=8,extratags=true)=>nominatimRequest({q,limit,extratags})};
+
+async function tryGeocode(item,query){
+ try{
+  const data=await nominatimRequest({q:query,limit:1});
+  if(data&&data[0]){
+   coordCache[itemKey(item)]={lat:Number(data[0].lat),lng:Number(data[0].lon)};
+   saveCoordCache();
+   if(map&&state.view==="map")redrawMarkers(false);
+   return true;
+  }
+ }catch(err){console.warn("Geocode failed",item.name,query,err)}
+ return false;
+}
+function indexStatus(done,total,failed=0){
+ if(!E.mapStatus)return;
+ if(placeIndexFinished){
+  const shown=ITEMS.filter(hasCoords).length;
+  E.mapStatus.textContent=failed?`${shown} places located; ${failed} could not be matched automatically.`:`All ${shown} places are cached and ready.`;
+ }else{
+  E.mapStatus.textContent=`Building place map once… ${done} / ${total} checked. You can leave this tab; loading continues in the background.`;
  }
- geocodeBusy=false;
- const left=rows().filter(i=>!coordCache[itemKey(i)]).length;
- E.mapStatus.textContent=left?`${left} filtered place${left===1?"":"s"} could not be located automatically; the rest are shown.`:`All ${rows().length} filtered places are shown.`;
- redrawMarkers(true);stabiliseMapSize();render();
+}
+async function indexAllPlacesOnce(){
+ if(placeIndexPromise)return placeIndexPromise;
+ placeIndexStarted=true;
+ placeIndexPromise=(async()=>{
+  const unresolved=ITEMS.filter(i=>!coordCache[itemKey(i)]);
+  let done=ITEMS.length-unresolved.length;
+  indexStatus(done,ITEMS.length,0);
+  const retry=[];
+  for(const item of unresolved){
+   const ok=await tryGeocode(item,`${item.name}, ${item.location}`);
+   if(!ok)retry.push(item);
+   done++;indexStatus(done,ITEMS.length,0);
+  }
+  const retry2=[];
+  for(const item of retry){
+   const ok=await tryGeocode(item,item.location);
+   if(!ok)retry2.push(item);
+  }
+  const finalFailures=[];
+  for(const item of retry2){
+   const ok=await tryGeocode(item,`${item.name}, ${areaHint(item.area)}, Ireland`);
+   if(!ok)finalFailures.push(item);
+  }
+  for(const item of finalFailures)coordCache[itemKey(item)]={failed:true};
+  saveCoordCache();
+  placeIndexFinished=true;
+  indexStatus(ITEMS.length,ITEMS.length,finalFailures.length);
+  if(map){redrawMarkers(true);stabiliseMapSize()}
+  if(state.gps)render();
+ })();
+ return placeIndexPromise;
+}
+function mapCacheSummary(){
+ const good=ITEMS.filter(hasCoords).length;
+ const failed=ITEMS.filter(i=>coordCache[itemKey(i)]?.failed).length;
+ const pending=ITEMS.length-good-failed;
+ return{good,failed,pending};
 }
 
 function showView(view){
  state.view=view;
  document.body.classList.toggle("itinerary-mode",view==="itinerary");
+ document.body.classList.toggle("search-mode",view==="search");
  E.listView.classList.toggle("hidden",view!=="list");
  E.mapView.classList.toggle("active",view==="map");
  E.itineraryView.classList.toggle("active",view==="itinerary");
- E.browseSummary.style.display=view==="itinerary"?"none":"block";
+ E.searchView?.classList.toggle("active",view==="search");
+ E.browseSummary.style.display=(view==="list"||view==="map")?"block":"none";
  E.listBtn.classList.toggle("active",view==="list");
  E.mapBtn.classList.toggle("active",view==="map");
  E.itineraryBtn.classList.toggle("active",view==="itinerary");
+ E.searchBtn?.classList.toggle("active",view==="search");
  if(view==="map"){
-  initMap();stabiliseMapSize();setTimeout(()=>{redrawMarkers(true);geocodeVisible()},80);
- }else{geocodeGeneration++}
+  initMap();stabiliseMapSize();
+  const s=mapCacheSummary();
+  setTimeout(()=>{redrawMarkers(true);if(!placeIndexStarted||s.pending>0)indexAllPlacesOnce();else indexStatus(ITEMS.length,ITEMS.length,s.failed)},80);
+ }
  if(view==="itinerary")document.dispatchEvent(new CustomEvent("holidayapp:itinerary-opened"));
+ if(view==="search")document.dispatchEvent(new CustomEvent("holidayapp:search-opened"));
 }
-function refresh(){render();if(state.view==="map"){initMap();stabiliseMapSize();redrawMarkers(true);geocodeVisible()}}
+function refresh(){
+ render();
+ if(state.view==="map"){
+  initMap();stabiliseMapSize();redrawMarkers(true);
+  const s=mapCacheSummary();if(!placeIndexStarted||s.pending>0)indexAllPlacesOnce();
+ }
+}
 function useGps(){
  if(!navigator.geolocation){E.gpsStatus.textContent="GPS not supported by this browser.";return}
  E.gpsBtn.disabled=true;E.gpsStatus.textContent="Requesting location permission…";
@@ -158,6 +247,7 @@ function useGps(){
   state.gps={lat:p.coords.latitude,lng:p.coords.longitude};
   E.gpsStatus.textContent="Location enabled — distances are straight-line estimates.";E.gpsBtn.textContent="Location enabled";
   render();if(map){redrawMarkers(true);stabiliseMapSize()}
+  document.dispatchEvent(new CustomEvent("holidayapp:gps-updated",{detail:state.gps}));
  },()=>{
   E.gpsBtn.disabled=false;E.gpsStatus.textContent="Location permission was blocked. Check browser/site Location permissions.";
  },{enableHighAccuracy:true,timeout:12000,maximumAge:60000});
@@ -169,8 +259,10 @@ E.types.addEventListener("click",e=>{const b=e.target.closest("[data-type]");if(
 E.listBtn.addEventListener("click",()=>showView("list"));
 E.mapBtn.addEventListener("click",()=>showView("map"));
 E.itineraryBtn.addEventListener("click",()=>showView("itinerary"));
+E.searchBtn?.addEventListener("click",()=>showView("search"));
 E.gpsBtn.addEventListener("click",useGps);
 E.clearBtn.addEventListener("click",()=>{state.type="All";state.area="All";state.search="";E.search.value="";E.area.value="All";document.querySelectorAll("#types [data-type]").forEach(x=>x.classList.toggle("active",x.dataset.type==="All"));refresh()});
 window.addEventListener("resize",()=>{if(map&&state.view==="map")stabiliseMapSize()});
 window.addEventListener("orientationchange",()=>{if(map&&state.view==="map")setTimeout(stabiliseMapSize,250)});
+window.HolidayApp={showView,itemKey,maps,directions,esc,state,coordCache,indexAllPlacesOnce};
 render();
