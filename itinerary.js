@@ -6,16 +6,28 @@ const HOLIDAY_DAYS=[
  {date:"2026-08-23",day:"Sun",label:"Sun 23 Aug"},{date:"2026-08-24",day:"Mon",label:"Mon 24 Aug"}
 ];
 const ITINERARY_SECTIONS=["Anytime","Morning","Lunch","Afternoon","Evening"];
+const CUSTOM_PLACES_STORAGE_KEY="holidayapp_custom_places_v1";
+const BUILT_IN_ITEM_KEYS=new Set(ITEMS.map(itemKey));
 const I={
  day:$("itineraryDay"),area:$("itineraryArea"),sections:$("itinerarySections"),empty:$("itineraryEmpty"),
  saveStatus:$("itinerarySaveStatus"),exportBtn:$("exportItineraryBtn"),importBtn:$("importItineraryBtn"),importFile:$("importItineraryFile"),
  modal:$("addModal"),modalItem:$("addModalItem"),dayButtons:$("addDayButtons"),closeModal:$("closeAddModal"),sectionFilters:$("sectionFilters")
 };
-let entries=loadEntries(),pendingItem=null;
+let entries=loadEntries(),pendingItem=null,customPlaces=loadCustomPlaces();
 const visibleSections=new Set(ITINERARY_SECTIONS);
 
 function uid(){return window.crypto&&crypto.randomUUID?crypto.randomUUID():"it-"+Date.now()+"-"+Math.random().toString(36).slice(2)}
 function loadEntries(){try{const s=JSON.parse(localStorage.getItem(ITINERARY_STORAGE_KEY)||"{}");return Array.isArray(s.entries)?s.entries:[]}catch{return[]}}
+function loadCustomPlaces(){
+ try{
+  const s=JSON.parse(localStorage.getItem(CUSTOM_PLACES_STORAGE_KEY)||"{}");
+  if(Array.isArray(s))return s.filter(x=>x&&x.name&&x.location);
+  return Array.isArray(s.places)?s.places.filter(x=>x&&x.name&&x.location):[];
+ }catch{return[]}
+}
+function saveCustomPlaces(){
+ localStorage.setItem(CUSTOM_PLACES_STORAGE_KEY,JSON.stringify({version:1,holiday:"Ireland 2026",places:customPlaces}));
+}
 function saveEntries(){
  localStorage.setItem(ITINERARY_STORAGE_KEY,JSON.stringify({version:2,holiday:"Ireland 2026",entries}));
  I.saveStatus.textContent="Saved on this device";
@@ -31,8 +43,45 @@ function snapshotFor(item){
   visitTime:item.visitTime||"",description:item.description||"",website1:item.website1||"",website2:item.website2||"",
   lat:Number.isFinite(Number(item.lat))?Number(item.lat):undefined,
   lng:Number.isFinite(Number(item.lng))?Number(item.lng):undefined,
-  source:item.source||"Search"
+  source:item.source||"User"
  };
+}
+function syncCustomPlaceToApp(item){
+ const snap=snapshotFor(item),k=itemKey(snap);
+ if(BUILT_IN_ITEM_KEYS.has(k))return ITEMS.find(i=>itemKey(i)===k)||snap;
+ const existing=ITEMS.find(i=>itemKey(i)===k);
+ if(existing)Object.assign(existing,snap);
+ else ITEMS.push({...snap});
+ ORIGINAL_NAMES.add(snap.name);
+ if(Number.isFinite(Number(snap.lat))&&Number.isFinite(Number(snap.lng))){
+  coordCache[k]={lat:Number(snap.lat),lng:Number(snap.lng)};
+  saveCoordCache();
+ }
+ return existing||ITEMS.find(i=>itemKey(i)===k)||snap;
+}
+function registerCustomPlace(item,{persist=true,notify=true}={}){
+ const snap=snapshotFor(item),k=itemKey(snap);
+ if(BUILT_IN_ITEM_KEYS.has(k))return ITEMS.find(i=>itemKey(i)===k)||snap;
+ const idx=customPlaces.findIndex(x=>itemKey(x)===k);
+ if(idx>=0)customPlaces[idx]={...customPlaces[idx],...snap,source:"User"};
+ else customPlaces.push({...snap,source:"User"});
+ const appItem=syncCustomPlaceToApp(customPlaces[idx>=0?idx:customPlaces.length-1]);
+ if(persist)saveCustomPlaces();
+ if(notify)document.dispatchEvent(new CustomEvent("holidayapp:custom-places-changed",{detail:{item:appItem}}));
+ return appItem;
+}
+function initialiseCustomPlaces(){
+ let migrated=false;
+ for(const entry of entries){
+  if(!entry?.itemSnapshot||BUILT_IN_ITEM_KEYS.has(entry.itemKey))continue;
+  const k=entry.itemKey,exists=customPlaces.some(x=>itemKey(x)===k);
+  registerCustomPlace(entry.itemSnapshot,{persist:false,notify:false});
+  if(!exists)migrated=true;
+ }
+ for(const item of customPlaces)syncCustomPlaceToApp(item);
+ if(migrated)saveCustomPlaces();
+ render();
+ document.dispatchEvent(new CustomEvent("holidayapp:custom-places-changed"));
 }
 function defaultSection(type){if(type==="Hotel"||type==="Dinner")return"Evening";if(type==="Lunch")return"Lunch";return"Anytime"}
 function setupDays(){I.day.innerHTML=HOLIDAY_DAYS.map(d=>`<option value="${d.date}">${d.label}</option>`).join("");if(!I.day.value)I.day.value=HOLIDAY_DAYS[0].date}
@@ -47,11 +96,15 @@ function addPending(date){
  const k=itemKey(pendingItem);
  if(entries.some(e=>e.date===date&&e.itemKey===k)){closeModal();return}
  const section=defaultSection(pendingItem.type),peers=entries.filter(e=>e.date===date&&e.section===section);
- const isBuiltIn=ITEMS.some(i=>itemKey(i)===k);
+ const isBuiltIn=BUILT_IN_ITEM_KEYS.has(k);
  const entry={id:uid(),itemKey:k,date,section,order:peers.length};
- if(!isBuiltIn)entry.itemSnapshot=snapshotFor(pendingItem);
+ if(!isBuiltIn){
+  const custom=registerCustomPlace(pendingItem,{persist:true,notify:false});
+  entry.itemSnapshot=snapshotFor(custom);
+ }
  entries.push(entry);
  I.day.value=date;closeModal();saveEntries();
+ document.dispatchEvent(new CustomEvent("holidayapp:custom-places-changed"));
 }
 function visibleEntries(){
  const date=I.day.value,area=I.area.value;
@@ -106,7 +159,11 @@ async function importItinerary(file){
  try{
   const data=JSON.parse(await file.text());if(!Array.isArray(data.entries))throw new Error("Invalid itinerary file");
   entries=data.entries.filter(e=>e&&e.id&&e.itemKey&&e.date&&ITINERARY_SECTIONS.includes(e.section));
-  saveEntries();I.saveStatus.textContent="Imported and saved";
+  for(const entry of entries){
+   if(entry.itemSnapshot&&!BUILT_IN_ITEM_KEYS.has(entry.itemKey))registerCustomPlace(entry.itemSnapshot,{persist:false,notify:false});
+  }
+  saveCustomPlaces();saveEntries();I.saveStatus.textContent="Imported and saved";
+  document.dispatchEvent(new CustomEvent("holidayapp:custom-places-changed"));
  }catch{alert("That file is not a valid HolidayApp itinerary export.")}
  finally{I.importFile.value=""}
 }
@@ -134,8 +191,9 @@ document.addEventListener("holidayapp:itinerary-opened",renderItinerary);
 window.HolidayItinerary={
  openItem(item){openModal(item)},
  entries(){return entries.slice()},
+ customPlaces(){return customPlaces.map(x=>({...x}))},
  render:renderItinerary,
  addItemToDay(item,date){pendingItem=item;addPending(date)}
 };
 
-setupDays();renderItinerary();
+initialiseCustomPlaces();setupDays();renderItinerary();
