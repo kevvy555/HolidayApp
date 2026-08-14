@@ -8,10 +8,17 @@ const HOLIDAY_DAYS=[
 const ITINERARY_SECTIONS=["Anytime","Morning","Lunch","Afternoon","Evening"];
 const CUSTOM_PLACES_STORAGE_KEY="holidayapp_custom_places_v1";
 const BUILT_IN_ITEM_KEYS=new Set(ITEMS.map(itemKey));
-const DINNER_TIME_VALUES=[];
-for(let minutes=17*60;minutes<=20*60;minutes+=15){
- DINNER_TIME_VALUES.push(`${String(Math.floor(minutes/60)).padStart(2,"0")}:${String(minutes%60).padStart(2,"0")}`);
+
+function makeTimeValues(startMinutes,endMinutes){
+ const values=[];
+ for(let minutes=startMinutes;minutes<=endMinutes;minutes+=15){
+  values.push(`${String(Math.floor(minutes/60)).padStart(2,"0")}:${String(minutes%60).padStart(2,"0")}`);
+ }
+ return values;
 }
+const DINNER_TIME_VALUES=makeTimeValues(17*60,20*60);
+const ATTRACTION_TIME_VALUES=makeTimeValues(8*60,20*60);
+
 const I={
  day:$("itineraryDay"),area:$("itineraryArea"),sections:$("itinerarySections"),empty:$("itineraryEmpty"),
  saveStatus:$("itinerarySaveStatus"),exportBtn:$("exportItineraryBtn"),importBtn:$("importItineraryBtn"),importFile:$("importItineraryFile"),
@@ -114,31 +121,44 @@ function visibleEntries(){
  const date=I.day.value,area=I.area.value;
  return entries.filter(e=>e.date===date).filter(e=>{const item=findItem(e.itemKey,e);return item&&(area==="All"||item.area===area)});
 }
-function dinnerTimeLabel(value){
- if(!DINNER_TIME_VALUES.includes(value))return"";
+
+function timeLabel(value){
+ if(typeof value!=="string"||!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value))return"";
  let [h,m]=value.split(":").map(Number),suffix=h>=12?"pm":"am";
  h=h%12||12;
  return`${h}:${String(m).padStart(2,"0")} ${suffix}`;
 }
-function dinnerTimeOptions(selected){
- return`<option value="">Set time</option>`+DINNER_TIME_VALUES.map(value=>`<option value="${value}"${selected===value?" selected":""}>${dinnerTimeLabel(value)}</option>`).join("");
+function timeOptions(values,selected){
+ return`<option value="">Set time</option>`+values.map(value=>`<option value="${value}"${selected===value?" selected":""}>${timeLabel(value)}</option>`).join("");
 }
-function dinnerTimeControl(entry,item){
- if(item.type!=="Dinner")return"";
- return`<label class="dinner-time-control"><span>Dinner time</span><select data-dinner-time="${esc(entry.id)}" aria-label="Dinner time for ${esc(item.name)}">${dinnerTimeOptions(entry.dinnerTime||"")}</select></label>`;
+function itineraryTimeControl(entry,item){
+ if(item.type==="Dinner"){
+  return`<label class="itinerary-time-control"><span>Dinner time</span><select data-dinner-time="${esc(entry.id)}" aria-label="Dinner time for ${esc(item.name)}">${timeOptions(DINNER_TIME_VALUES,entry.dinnerTime||"")}</select></label>`;
+ }
+ if(item.type==="Attraction"){
+  return`<label class="itinerary-time-control"><span>Visit time</span><select data-attraction-time="${esc(entry.id)}" aria-label="Visit time for ${esc(item.name)}">${timeOptions(ATTRACTION_TIME_VALUES,entry.attractionTime||"")}</select></label>`;
+ }
+ return"";
 }
 function setDinnerTime(id,value){
  const entry=entries.find(e=>e.id===id);if(!entry)return;
  const item=findItem(entry.itemKey,entry);if(!item||item.type!=="Dinner")return;
  if(value&&DINNER_TIME_VALUES.includes(value))entry.dinnerTime=value;else delete entry.dinnerTime;
  saveEntries();
- I.saveStatus.textContent=entry.dinnerTime?`Dinner time saved · ${dinnerTimeLabel(entry.dinnerTime)}`:"Dinner time cleared";
+ I.saveStatus.textContent=entry.dinnerTime?`Dinner time saved · ${timeLabel(entry.dinnerTime)}`:"Dinner time cleared";
+}
+function setAttractionTime(id,value){
+ const entry=entries.find(e=>e.id===id);if(!entry)return;
+ const item=findItem(entry.itemKey,entry);if(!item||item.type!=="Attraction")return;
+ if(value&&ATTRACTION_TIME_VALUES.includes(value))entry.attractionTime=value;else delete entry.attractionTime;
+ saveEntries();
+ I.saveStatus.textContent=entry.attractionTime?`Visit time saved · ${timeLabel(entry.attractionTime)}`:"Visit time cleared";
 }
 function itemHtml(entry){
  const item=findItem(entry.itemKey,entry);if(!item)return"";
  return`<div class="it-item" data-entry-id="${esc(entry.id)}">
   <button class="it-drag" type="button" aria-label="Drag to reorder">☰</button>
-  <div class="it-main"><div class="it-name">${esc(item.name)}</div><div class="it-meta">${esc(item.type)} · ${esc(item.area)} · <a target="_blank" rel="noopener" href="${esc(maps(item))}">Map</a></div>${dinnerTimeControl(entry,item)}</div>
+  <div class="it-main"><div class="it-name">${esc(item.name)}</div><div class="it-meta">${esc(item.type)} · ${esc(item.area)} · <a target="_blank" rel="noopener" href="${esc(maps(item))}">Map</a></div>${itineraryTimeControl(entry,item)}</div>
   <div class="it-actions"><button class="it-order-btn" data-it-move="up" type="button" aria-label="Move up">↑</button><button class="it-order-btn" data-it-move="down" type="button" aria-label="Move down">↓</button><button class="it-delete" data-it-delete="${esc(entry.id)}" type="button" aria-label="Remove">×</button></div>
  </div>`;
 }
@@ -170,7 +190,7 @@ function initSortables(){
 }
 function moveEntry(id,dir){
  const e=entries.find(x=>x.id===id);if(!e)return;
- const peers=entries.filter(x=>x.date===e.date&&x.section===e.section).sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0));
+ const peers=entries.filter(x=>x.date===e.date&&e.section===e.section).sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0));
  const idx=peers.findIndex(x=>x.id===id),target=dir==="up"?idx-1:idx+1;if(target<0||target>=peers.length)return;
  const temp=peers[idx].order;peers[idx].order=peers[target].order;peers[target].order=temp;normalize(e.date);saveEntries();
 }
@@ -228,10 +248,10 @@ async function importItinerary(file){
  finally{I.importFile.value=""}
 }
 
-function installDinnerTimeStyles(){
- if(document.getElementById("dinnerTimeStyles"))return;
- const style=document.createElement("style");style.id="dinnerTimeStyles";
- style.textContent=`.it-item{touch-action:auto}.it-drag{touch-action:none}.dinner-time-control{display:flex;align-items:center;gap:6px;margin-top:6px;width:max-content;max-width:100%;font-size:.72rem;color:var(--muted);font-weight:800}.dinner-time-control select{width:auto;min-width:105px;min-height:32px;padding:4px 26px 4px 8px;border-radius:8px;font-size:.78rem;color:var(--text);background:#fff;touch-action:auto}@media(max-width:430px){.dinner-time-control{align-items:flex-start;flex-direction:column;gap:3px}.dinner-time-control select{min-width:118px}}`;
+function installItineraryTimeStyles(){
+ if(document.getElementById("itineraryTimeStyles"))return;
+ const style=document.createElement("style");style.id="itineraryTimeStyles";
+ style.textContent=`.it-item{touch-action:auto}.it-drag{touch-action:none}.itinerary-time-control{display:flex;align-items:center;gap:6px;margin-top:6px;width:max-content;max-width:100%;font-size:.72rem;color:var(--muted);font-weight:800}.itinerary-time-control select{width:auto;min-width:105px;min-height:32px;padding:4px 26px 4px 8px;border-radius:8px;font-size:.78rem;color:var(--text);background:#fff;touch-action:auto}@media(max-width:430px){.itinerary-time-control{align-items:flex-start;flex-direction:column;gap:3px}.itinerary-time-control select{min-width:118px}}`;
  document.head.appendChild(style);
 }
 
@@ -248,8 +268,10 @@ document.addEventListener("click",e=>{
  }
 });
 document.addEventListener("change",e=>{
- const time=e.target.closest("[data-dinner-time]");
- if(time)setDinnerTime(time.dataset.dinnerTime,time.value);
+ const dinnerTime=e.target.closest("[data-dinner-time]");
+ if(dinnerTime){setDinnerTime(dinnerTime.dataset.dinnerTime,dinnerTime.value);return;}
+ const attractionTime=e.target.closest("[data-attraction-time]");
+ if(attractionTime)setAttractionTime(attractionTime.dataset.attractionTime,attractionTime.value);
 });
 I.closeModal.addEventListener("click",closeModal);
 I.modal.addEventListener("click",e=>{if(e.target===I.modal)closeModal()});
@@ -267,4 +289,4 @@ window.HolidayItinerary={
  addItemToDay(item,date){pendingItem=item;addPending(date)}
 };
 
-installDinnerTimeStyles();initialiseCustomPlaces();setupDays();renderItinerary();
+installItineraryTimeStyles();initialiseCustomPlaces();setupDays();renderItinerary();
