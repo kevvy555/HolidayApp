@@ -152,19 +152,55 @@ function moveEntry(id,dir){
 }
 function removeEntry(id){entries=entries.filter(e=>e.id!==id);saveEntries()}
 function exportItinerary(){
- const blob=new Blob([JSON.stringify({version:2,holiday:"Ireland 2026",entries},null,2)],{type:"application/json"});
- const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="Ireland_2026_Itinerary.json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ const backup={
+  version:3,
+  format:"HolidayApp backup",
+  holiday:"Ireland 2026",
+  exportedAt:new Date().toISOString(),
+  customPlaces:customPlaces.map(snapshotFor),
+  entries
+ };
+ const blob=new Blob([JSON.stringify(backup,null,2)],{type:"application/json"});
+ const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="Ireland_2026_HolidayApp_Backup.json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ I.saveStatus.textContent=`Backup exported · ${customPlaces.length} custom place${customPlaces.length===1?"":"s"}`;
+}
+function clearCustomPlacesFromApp(){
+ const oldNames=new Set(customPlaces.map(x=>x.name));
+ for(let i=ITEMS.length-1;i>=0;i--){
+  if(!BUILT_IN_ITEM_KEYS.has(itemKey(ITEMS[i])))ITEMS.splice(i,1);
+ }
+ const originalNames=new Set(window.HOLIDAY_ORIGINAL_NAMES||[]);
+ for(const name of oldNames){if(!originalNames.has(name))ORIGINAL_NAMES.delete(name);}
+ customPlaces=[];
 }
 async function importItinerary(file){
  try{
-  const data=JSON.parse(await file.text());if(!Array.isArray(data.entries))throw new Error("Invalid itinerary file");
+  const data=JSON.parse(await file.text());if(!Array.isArray(data.entries))throw new Error("Invalid HolidayApp export");
   entries=data.entries.filter(e=>e&&e.id&&e.itemKey&&e.date&&ITINERARY_SECTIONS.includes(e.section));
-  for(const entry of entries){
-   if(entry.itemSnapshot&&!BUILT_IN_ITEM_KEYS.has(entry.itemKey))registerCustomPlace(entry.itemSnapshot,{persist:false,notify:false});
+  clearCustomPlacesFromApp();
+
+  if(Array.isArray(data.customPlaces)){
+   for(const place of data.customPlaces){
+    if(place&&place.name&&place.location)registerCustomPlace(place,{persist:false,notify:false});
+   }
+  }else{
+   // Backwards compatibility with older itinerary-only exports.
+   for(const entry of entries){
+    if(entry.itemSnapshot&&!BUILT_IN_ITEM_KEYS.has(entry.itemKey))registerCustomPlace(entry.itemSnapshot,{persist:false,notify:false});
+   }
   }
-  saveCustomPlaces();saveEntries();I.saveStatus.textContent="Imported and saved";
+
+  // Also recover any custom place referenced by the itinerary but missing from the custom-place list.
+  for(const entry of entries){
+   if(entry.itemSnapshot&&!BUILT_IN_ITEM_KEYS.has(entry.itemKey)&&!customPlaces.some(x=>itemKey(x)===entry.itemKey)){
+    registerCustomPlace(entry.itemSnapshot,{persist:false,notify:false});
+   }
+  }
+
+  saveCustomPlaces();saveEntries();
+  I.saveStatus.textContent=`Backup imported · ${customPlaces.length} custom place${customPlaces.length===1?"":"s"}`;
   document.dispatchEvent(new CustomEvent("holidayapp:custom-places-changed"));
- }catch{alert("That file is not a valid HolidayApp itinerary export.")}
+ }catch{alert("That file is not a valid HolidayApp backup or itinerary export.")}
  finally{I.importFile.value=""}
 }
 
