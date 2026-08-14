@@ -8,6 +8,10 @@ const HOLIDAY_DAYS=[
 const ITINERARY_SECTIONS=["Anytime","Morning","Lunch","Afternoon","Evening"];
 const CUSTOM_PLACES_STORAGE_KEY="holidayapp_custom_places_v1";
 const BUILT_IN_ITEM_KEYS=new Set(ITEMS.map(itemKey));
+const DINNER_TIME_VALUES=[];
+for(let minutes=17*60;minutes<=20*60;minutes+=15){
+ DINNER_TIME_VALUES.push(`${String(Math.floor(minutes/60)).padStart(2,"0")}:${String(minutes%60).padStart(2,"0")}`);
+}
 const I={
  day:$("itineraryDay"),area:$("itineraryArea"),sections:$("itinerarySections"),empty:$("itineraryEmpty"),
  saveStatus:$("itinerarySaveStatus"),exportBtn:$("exportItineraryBtn"),importBtn:$("importItineraryBtn"),importFile:$("importItineraryFile"),
@@ -110,11 +114,31 @@ function visibleEntries(){
  const date=I.day.value,area=I.area.value;
  return entries.filter(e=>e.date===date).filter(e=>{const item=findItem(e.itemKey,e);return item&&(area==="All"||item.area===area)});
 }
+function dinnerTimeLabel(value){
+ if(!DINNER_TIME_VALUES.includes(value))return"";
+ let [h,m]=value.split(":").map(Number),suffix=h>=12?"pm":"am";
+ h=h%12||12;
+ return`${h}:${String(m).padStart(2,"0")} ${suffix}`;
+}
+function dinnerTimeOptions(selected){
+ return`<option value="">Set time</option>`+DINNER_TIME_VALUES.map(value=>`<option value="${value}"${selected===value?" selected":""}>${dinnerTimeLabel(value)}</option>`).join("");
+}
+function dinnerTimeControl(entry,item){
+ if(item.type!=="Dinner")return"";
+ return`<label class="dinner-time-control"><span>Dinner time</span><select data-dinner-time="${esc(entry.id)}" aria-label="Dinner time for ${esc(item.name)}">${dinnerTimeOptions(entry.dinnerTime||"")}</select></label>`;
+}
+function setDinnerTime(id,value){
+ const entry=entries.find(e=>e.id===id);if(!entry)return;
+ const item=findItem(entry.itemKey,entry);if(!item||item.type!=="Dinner")return;
+ if(value&&DINNER_TIME_VALUES.includes(value))entry.dinnerTime=value;else delete entry.dinnerTime;
+ saveEntries();
+ I.saveStatus.textContent=entry.dinnerTime?`Dinner time saved · ${dinnerTimeLabel(entry.dinnerTime)}`:"Dinner time cleared";
+}
 function itemHtml(entry){
  const item=findItem(entry.itemKey,entry);if(!item)return"";
  return`<div class="it-item" data-entry-id="${esc(entry.id)}">
   <button class="it-drag" type="button" aria-label="Drag to reorder">☰</button>
-  <div class="it-main"><div class="it-name">${esc(item.name)}</div><div class="it-meta">${esc(item.type)} · ${esc(item.area)} · <a target="_blank" rel="noopener" href="${esc(maps(item))}">Map</a></div></div>
+  <div class="it-main"><div class="it-name">${esc(item.name)}</div><div class="it-meta">${esc(item.type)} · ${esc(item.area)} · <a target="_blank" rel="noopener" href="${esc(maps(item))}">Map</a></div>${dinnerTimeControl(entry,item)}</div>
   <div class="it-actions"><button class="it-order-btn" data-it-move="up" type="button" aria-label="Move up">↑</button><button class="it-order-btn" data-it-move="down" type="button" aria-label="Move down">↓</button><button class="it-delete" data-it-delete="${esc(entry.id)}" type="button" aria-label="Remove">×</button></div>
  </div>`;
 }
@@ -204,6 +228,13 @@ async function importItinerary(file){
  finally{I.importFile.value=""}
 }
 
+function installDinnerTimeStyles(){
+ if(document.getElementById("dinnerTimeStyles"))return;
+ const style=document.createElement("style");style.id="dinnerTimeStyles";
+ style.textContent=`.it-item{touch-action:auto}.it-drag{touch-action:none}.dinner-time-control{display:flex;align-items:center;gap:6px;margin-top:6px;width:max-content;max-width:100%;font-size:.72rem;color:var(--muted);font-weight:800}.dinner-time-control select{width:auto;min-width:105px;min-height:32px;padding:4px 26px 4px 8px;border-radius:8px;font-size:.78rem;color:var(--text);background:#fff;touch-action:auto}@media(max-width:430px){.dinner-time-control{align-items:flex-start;flex-direction:column;gap:3px}.dinner-time-control select{min-width:118px}}`;
+ document.head.appendChild(style);
+}
+
 document.addEventListener("click",e=>{
  const add=e.target.closest("[data-add-itinerary]");
  if(add){const item=findItem(add.dataset.addItinerary);if(item)openModal(item);return}
@@ -215,6 +246,10 @@ document.addEventListener("click",e=>{
   if(visibleSections.has(section))visibleSections.delete(section);else visibleSections.add(section);
   filter.classList.toggle("active",visibleSections.has(section));renderItinerary();
  }
+});
+document.addEventListener("change",e=>{
+ const time=e.target.closest("[data-dinner-time]");
+ if(time)setDinnerTime(time.dataset.dinnerTime,time.value);
 });
 I.closeModal.addEventListener("click",closeModal);
 I.modal.addEventListener("click",e=>{if(e.target===I.modal)closeModal()});
@@ -232,4 +267,4 @@ window.HolidayItinerary={
  addItemToDay(item,date){pendingItem=item;addPending(date)}
 };
 
-initialiseCustomPlaces();setupDays();renderItinerary();
+installDinnerTimeStyles();initialiseCustomPlaces();setupDays();renderItinerary();
